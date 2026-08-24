@@ -1,5 +1,5 @@
 import arcadiaHtml from "../arcadia.html?raw";
-import socialPreview from "../og.png?inline";
+import socialPreview from "../og-v2.png?inline";
 
 const textHeaders = {
   "cache-control": "public, max-age=0, must-revalidate",
@@ -29,7 +29,7 @@ export default {
       return new Response(arcadiaHtml, { headers: textHeaders });
     }
 
-    if (url.pathname === "/og.png") {
+    if (url.pathname === "/og.png" || url.pathname === "/og-v2.png") {
       return new Response(decodeDataUrl(socialPreview), {
         headers: {
           "cache-control": "public, max-age=31536000, immutable",
