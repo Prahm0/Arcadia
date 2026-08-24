@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Arcadia turns student chaos into a calm, adaptive plan."
+    />
+    <title>Arcadia | A plan that works</title>
+    <style>
+      :root {
+        --ink: #171719;
+        --muted: #6e6e73;
+        --line: #dedede;
+        --canvas: #f7f7f5;
+        --panel: #ffffff;
+        --accent: #4a4b98;
+        --accent-dark: #363775;
+      }
+
+      * { box-sizing: border-box; }
+
+      html { scroll-behavior: smooth; }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--canvas);
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      a { color: inherit; text-decoration: none; }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      .wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+
+      .nav {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 22px 0;
+      }
+
+      .brand { font-size: 20px; font-weight: 650; letter-spacing: -0.04em; }
+
+      .nav a, .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
+        padding: 0 17px;
+        border-radius: 9px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .nav a { background: var(--ink); color: white; }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 72px;
+        align-items: center;
+        min-height: 630px;
+        padding: 72px 0 88px;
+      }
+
+      .eyebrow { color: var(--accent); font-size: 14px; font-weight: 650; margin: 0 0 18px; }
+
+      h1, h2, h3, p { margin-top: 0; }
+
+      h1 {
+        max-width: 650px;
+        margin-bottom: 23px;
+        font-size: clamp(47px, 5.5vw, 74px);
+        font-weight: 650;
+        letter-spacing: -0.065em;
+        line-height: 0.99;
+      }
+
+      .hero-copy {
+        max-width: 530px;
+        color: var(--muted);
+        font-size: 19px;
+        line-height: 1.5;
+      }
+
+      .button { border: 0; cursor: pointer; background: var(--accent); color: white; margin-top: 12px; }
+      .button:hover { background: var(--accent-dark); }
+
+      .briefing {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 25px;
+        box-shadow: 0 20px 45px rgba(26, 26, 30, 0.07);
+      }
+
+      .briefing-top, .task { display: flex; justify-content: space-between; gap: 16px; }
+      .briefing-top { align-items: center; padding-bottom: 21px; border-bottom: 1px solid var(--line); }
+      .briefing-top strong { font-size: 17px; letter-spacing: -0.025em; }
+      .briefing-top span, .task time { color: var(--muted); font-size: 13px; }
+
+      .guidance { padding: 21px 0 17px; }
+      .guidance-label { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+      .guidance p { margin: 8px 0 0; font-size: 18px; font-weight: 550; line-height: 1.35; letter-spacing: -0.025em; }
+
+      .task { align-items: center; padding: 15px 0; border-top: 1px solid var(--line); }
+      .task:first-of-type { border-top: 0; }
+      .task-name { font-size: 14px; font-weight: 550; }
+
+      .section { padding: 105px 0; border-top: 1px solid var(--line); }
+      .section h2 { max-width: 710px; margin-bottom: 50px; font-size: clamp(35px, 4.3vw, 55px); letter-spacing: -0.055em; line-height: 1.03; }
+
+      .steps { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); }
+      .step { padding: 26px 30px 18px 0; min-height: 185px; border-right: 1px solid var(--line); }
+      .step + .step { padding-left: 30px; }
+      .step:last-child { border-right: 0; }
+      .step-number { color: var(--accent); font-size: 13px; font-weight: 650; }
+      h3 { margin: 39px 0 8px; font-size: 19px; letter-spacing: -0.025em; }
+      .step p { max-width: 270px; margin: 0; color: var(--muted); font-size: 15px; line-height: 1.48; }
+
+      .waitlist { background: var(--ink); color: white; }
+      .waitlist-inner { display: grid; grid-template-columns: 1fr 0.85fr; gap: 70px; align-items: center; padding: 96px 0; }
+      .waitlist h2 { margin: 0; font-size: clamp(37px, 4.5vw, 58px); line-height: 1.02; letter-spacing: -0.06em; }
+      .waitlist p { margin: 16px 0 0; color: #b6b6bb; font-size: 16px; line-height: 1.5; }
+
+      form { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+      input {
+        width: 100%;
+        min-height: 48px;
+        padding: 0 14px;
+        border: 1px solid #55555a;
+        border-radius: 9px;
+        outline: none;
+        background: transparent;
+        color: white;
+        font: inherit;
+      }
+      input::placeholder { color: #96969d; }
+      input:focus { border-color: #c2c2e8; box-shadow: 0 0 0 3px rgba(194, 194, 232, 0.16); }
+      form .button { min-height: 48px; margin: 0; }
+      .form-message { min-height: 22px; grid-column: 1 / -1; margin: 2px 0 0; color: #c2c2e8; font-size: 13px; }
+
+      footer { padding: 22px 0 34px; background: var(--ink); color: #8f8f96; font-size: 13px; }
+
+      @media (max-width: 760px) {
+        .wrap { width: min(100% - 32px, 560px); }
+        .hero, .waitlist-inner { grid-template-columns: 1fr; gap: 42px; }
+        .hero { min-height: auto; padding: 58px 0 72px; }
+        .hero-copy { font-size: 17px; }
+        .section { padding: 72px 0; }
+        .section h2 { margin-bottom: 32px; }
+        .steps { grid-template-columns: 1fr; }
+        .step, .step + .step { min-height: auto; padding: 24px 0; border-right: 0; border-bottom: 1px solid var(--line); }
+        .step:last-child { border-bottom: 0; }
+        h3 { margin-top: 25px; }
+        .waitlist-inner { padding: 70px 0; }
+        form { grid-template-columns: 1fr; }
+      }
+
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+    </style>
+  </head>
+  <body>
+    <header class="wrap nav">
+      <a class="brand" href="#top" aria-label="Arcadia home">Arcadia</a>
+      <a href="#waitlist">Join the waitlist</a>
+    </header>
+
+    <main id="top">
+      <section class="wrap hero" aria-labelledby="hero-title">
+        <div>
+          <p class="eyebrow">A calmer way to stay on track</p>
+          <h1 id="hero-title">Turn school chaos into a plan that works.</h1>
+          <p class="hero-copy">
+            Arcadia brings your workload, sleep, training and deadlines into one calm place; then helps you decide what to do next.
+          </p>
+          <a class="button" href="#waitlist">Join the waitlist</a>
+        </div>
+
+        <aside class="briefing" aria-label="Example Arcadia daily briefing">
+          <div class="briefing-top"><strong>Today</strong><span>Wednesday, 18 June</span></div>
+          <div class="guidance">
+            <div class="guidance-label">Your guidance</div>
+            <p>Keep tonight light. Finish the maths revision, outline English, then get a proper night of sleep.</p>
+          </div>
+          <div class="task"><span class="task-name">Maths revision</span><time>35 min</time></div>
+          <div class="task"><span class="task-name">English outline</span><time>20 min</time></div>
+          <div class="task"><span class="task-name">Sleep</span><time>10:45 pm</time></div>
+        </aside>
+      </section>
+
+      <section class="section">
+        <div class="wrap">
+          <p class="eyebrow">Built for real student life</p>
+          <h2>More than a timetable. A clear way forward when everything competes for your attention.</h2>
+          <div class="steps">
+            <article class="step">
+              <div class="step-number">01</div>
+              <h3>Bring it all together</h3>
+              <p>Add assignments, exams, training, commitments and sleep goals without reorganising your whole life.</p>
+            </article>
+            <article class="step">
+              <div class="step-number">02</div>
+              <h3>Get a realistic plan</h3>
+              <p>Arcadia turns competing priorities into a plan that makes room for meaningful work and recovery.</p>
+            </article>
+            <article class="step">
+              <div class="step-number">03</div>
+              <h3>Adapt when life changes</h3>
+              <p>Missed a task or a late training session? Arcadia helps you reset without the panic spiral.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="waitlist" id="waitlist" aria-labelledby="waitlist-title">
+        <div class="wrap waitlist-inner">
+          <div>
+            <h2 id="waitlist-title">A better plan starts here.</h2>
+            <p>Join the waitlist to hear when Arcadia is ready for its first students.</p>
+          </div>
+          <form id="waitlist-form" novalidate>
+            <label class="sr-only" for="email">Email address</label>
+            <input id="email" name="email" type="email" autocomplete="email" placeholder="Your email address" required />
+            <button class="button" type="submit">Join waitlist</button>
+            <p class="form-message" id="form-message" aria-live="polite"></p>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <footer><div class="wrap">© 2026 Arcadia</div></footer>
+
+    <script>
+      const form = document.querySelector('#waitlist-form');
+      const email = document.querySelector('#email');
+      const message = document.querySelector('#form-message');
+
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (!email.validity.valid) {
+          message.textContent = 'Enter a valid email address to join the waitlist.';
+          email.focus();
+          return;
+        }
+        message.textContent = 'You’re on the list. We’ll be in touch.';
+        form.reset();
+      });
+    </script>
+  </body>
+</html>
