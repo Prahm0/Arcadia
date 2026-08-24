@@ -10,7 +10,7 @@
     <meta property="og:title" content="Arcadia | Adaptive planning for students" />
     <meta
       property="og:description"
-      content="Most students optimise one part of their lives. Arcadia does all three."
+      content="Most students optimise one part of their lives. Arcadia does all three for you."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://arcadia-student-planner.abtinfeizollahi67.chatgpt.site" />
@@ -19,7 +19,7 @@
     <meta name="twitter:title" content="Arcadia | Adaptive planning for students" />
     <meta
       name="twitter:description"
-      content="Most students optimise one part of their lives. Arcadia does all three."
+      content="Most students optimise one part of their lives. Arcadia does all three for you."
     />
     <meta name="twitter:image" content="https://arcadia-student-planner.abtinfeizollahi67.chatgpt.site/og-v2.png" />
     <link rel="canonical" href="https://arcadia-student-planner.abtinfeizollahi67.chatgpt.site" />
@@ -364,6 +364,24 @@
       .bar.active { background: var(--accent); }
       .bar.light { background: #e7e7e4; }
 
+      .forecast-controls { display: flex; gap: 5px; margin-bottom: 12px; }
+      .forecast-day {
+        flex: 1;
+        min-height: 29px;
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        cursor: pointer;
+        background: #fff;
+        color: var(--soft-muted);
+        font-size: 10px;
+        font-weight: 700;
+        transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+      }
+      .forecast-day:hover, .forecast-day[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+      .forecast-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 10px; }
+      .forecast-status strong { color: var(--ink); font-size: 11px; }
+
       .capacity-line { display: grid; grid-template-columns: 56px 1fr; gap: 10px; align-items: center; margin-top: 8px; color: var(--soft-muted); font-size: 10px; }
       .capacity-track { height: 7px; border-radius: 99px; background: #e7e7e4; overflow: hidden; }
       .capacity-fill { height: 100%; border-radius: inherit; background: var(--accent); }
@@ -557,7 +575,7 @@
       <section class="wrap hero" aria-labelledby="hero-title">
         <div class="hero-content">
           <p class="eyebrow">Adaptive planning for students</p>
-          <h1 id="hero-title">Most students optimise one part of their lives. Arcadia does all three.</h1>
+          <h1 id="hero-title">Most students optimise one part of their lives. Arcadia does all three for you.</h1>
           <p class="hero-copy">
             Arcadia balances deadlines, available time, training and sleep—then shows what to do now and what can wait.
           </p>
@@ -570,20 +588,6 @@
             <span class="hero-note">Recovery stays visible</span>
             <span class="hero-note">Plans reset without starting over</span>
           </div>
-        </div>
-      </section>
-
-      <section class="logic-band" aria-labelledby="context-title">
-        <div class="wrap logic-band-inner">
-          <h2 id="context-title">One plan, built from the whole picture.</h2>
-          <ul class="context-list">
-            <li>Deadlines</li>
-            <li>Task effort</li>
-            <li>Available time</li>
-            <li>Classes</li>
-            <li>Training</li>
-            <li>Sleep targets</li>
-          </ul>
         </div>
       </section>
 
@@ -611,11 +615,11 @@
               </ul>
             </article>
             <article class="logic-stage">
-              <div class="stage-top"><span class="stage-number">03</span><span class="stage-kicker">You get</span></div>
-              <h3>A plan you can use</h3>
-              <p>Know what to do now, what comes next and what is safe to move.</p>
+              <div class="stage-top"><span class="stage-number">03</span><span class="stage-kicker">Your schedule</span></div>
+              <h3>A schedule made for you</h3>
+              <p>Arcadia’s AI turns your syllabus, commitments and goals into a personalised study schedule.</p>
               <ul class="tag-list">
-                <li>Daily focus</li><li>Time blocks</li><li>Weekly outlook</li><li>Automatic resets</li>
+                <li>AI study blocks</li><li>Personal timetable</li><li>Weekly outlook</li><li>Automatic resets</li>
               </ul>
             </article>
           </div>
@@ -641,15 +645,19 @@
             <article class="feature-card">
               <span class="feature-number">02</span>
               <h3>Workload forecast</h3>
-              <p>See pressure building before the week fills up.</p>
-              <div class="micro-ui bars" aria-label="Illustrative weekly workload chart">
-                <span class="bar light" style="height: 28%"></span>
-                <span class="bar" style="height: 48%"></span>
-                <span class="bar active" style="height: 82%"></span>
-                <span class="bar" style="height: 57%"></span>
-                <span class="bar light" style="height: 34%"></span>
-                <span class="bar light" style="height: 18%"></span>
-                <span class="bar light" style="height: 22%"></span>
+              <p>Tap a day to see where pressure is building before the week fills up.</p>
+              <div class="micro-ui forecast" aria-label="Interactive weekly workload forecast">
+                <div class="forecast-controls" role="group" aria-label="Choose a day">
+                  <button class="forecast-day" type="button" data-day="Mon" data-load="Light" data-detail="1h 10m planned" aria-pressed="false">M</button>
+                  <button class="forecast-day" type="button" data-day="Tue" data-load="Steady" data-detail="2h 05m planned" aria-pressed="false">T</button>
+                  <button class="forecast-day" type="button" data-day="Wed" data-load="High" data-detail="3h 40m planned" aria-pressed="true">W</button>
+                  <button class="forecast-day" type="button" data-day="Thu" data-load="Steady" data-detail="2h 25m planned" aria-pressed="false">T</button>
+                  <button class="forecast-day" type="button" data-day="Fri" data-load="Light" data-detail="1h 20m planned" aria-pressed="false">F</button>
+                </div>
+                <div class="bars" aria-hidden="true">
+                  <span class="bar light" style="height: 28%"></span><span class="bar" style="height: 48%"></span><span class="bar active" style="height: 82%"></span><span class="bar" style="height: 57%"></span><span class="bar light" style="height: 34%"></span>
+                </div>
+                <div class="forecast-status" aria-live="polite"><span id="forecast-detail">Wednesday · 3h 40m planned</span><strong id="forecast-load">High</strong></div>
               </div>
             </article>
             <article class="feature-card">
@@ -760,28 +768,28 @@
         <div class="wrap">
           <div class="section-heading">
             <p class="eyebrow">How it works</p>
-            <h2 id="workflow-title">A useful plan in four simple moves.</h2>
+            <h2 id="workflow-title">Your AI study planner, working with your real timetable.</h2>
           </div>
           <div class="steps">
             <article class="step">
               <span class="step-number">01</span>
-              <h3>Capture</h3>
-              <p>Add the task, deadline and rough effort.</p>
+              <h3>Reads your syllabus</h3>
+              <p>Add your subjects or syllabus, and Arcadia turns assessments and topics into a plan of attack.</p>
             </article>
             <article class="step">
               <span class="step-number">02</span>
-              <h3>Add context</h3>
-              <p>Set classes, commitments, training and sleep.</p>
+              <h3>Learns your timetable</h3>
+              <p>It works around classes, commitments, training and the time you want to protect for sleep.</p>
             </article>
             <article class="step">
               <span class="step-number">03</span>
-              <h3>Prioritise</h3>
-              <p>Arcadia weighs urgency against real capacity.</p>
+              <h3>Schedules study sessions</h3>
+              <p>AI places focused sessions where they fit, prioritising the work that will make the biggest difference.</p>
             </article>
             <article class="step">
               <span class="step-number">04</span>
-              <h3>Rebalance</h3>
-              <p>Complete, skip or move something; the plan adjusts.</p>
+              <h3>Keeps you accountable</h3>
+              <p>Helpful check-ins keep you moving, and the schedule adjusts when life gets in the way.</p>
             </article>
           </div>
         </div>
@@ -857,6 +865,18 @@
       const form = document.querySelector('#waitlist-form');
       const email = document.querySelector('#email');
       const message = document.querySelector('#form-message');
+      const forecastDays = document.querySelectorAll('.forecast-day');
+      const forecastDetail = document.querySelector('#forecast-detail');
+      const forecastLoad = document.querySelector('#forecast-load');
+
+      forecastDays.forEach((day) => {
+        day.addEventListener('click', () => {
+          forecastDays.forEach((button) => button.setAttribute('aria-pressed', 'false'));
+          day.setAttribute('aria-pressed', 'true');
+          forecastDetail.textContent = `${day.dataset.day === 'Wed' ? 'Wednesday' : day.dataset.day} · ${day.dataset.detail}`;
+          forecastLoad.textContent = day.dataset.load;
+        });
+      });
 
       form.addEventListener('submit', (event) => {
         event.preventDefault();
