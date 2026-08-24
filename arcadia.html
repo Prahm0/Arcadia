@@ -5,18 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Arcadia turns student chaos into a calm, adaptive plan."
+      content="Arcadia turns deadlines, available time, training and sleep targets into an adaptive daily plan for students."
     />
-    <title>Arcadia | A plan that works</title>
+    <meta property="og:title" content="Arcadia | Adaptive planning for students" />
+    <meta
+      property="og:description"
+      content="Turn school chaos into a plan that changes when your day does."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Arcadia | Adaptive planning for students" />
+    <meta
+      name="twitter:description"
+      content="Turn school chaos into a plan that changes when your day does."
+    />
+    <title>Arcadia | Adaptive planning for students</title>
     <style>
       :root {
         --ink: #171719;
-        --muted: #6e6e73;
-        --line: #dedede;
+        --muted: #69696f;
+        --soft-muted: #8a8a91;
+        --line: #dededb;
         --canvas: #f7f7f5;
         --panel: #ffffff;
         --accent: #4a4b98;
         --accent-dark: #363775;
+        --accent-soft: #ececf8;
+        --accent-pale: #f6f5fb;
+        --positive: #326b53;
+        --positive-soft: #e9f4ee;
       }
 
       * { box-sizing: border-box; }
@@ -31,7 +48,14 @@
         -webkit-font-smoothing: antialiased;
       }
 
+      button, input { font: inherit; }
       a { color: inherit; text-decoration: none; }
+      h1, h2, h3, p { margin-top: 0; }
+
+      :focus-visible {
+        outline: 3px solid rgba(74, 75, 152, 0.35);
+        outline-offset: 3px;
+      }
 
       .sr-only {
         position: absolute;
@@ -45,185 +69,936 @@
         border: 0;
       }
 
-      .wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+      .wrap { width: min(1160px, calc(100% - 48px)); margin: 0 auto; }
+
+      .nav-shell {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: rgba(247, 247, 245, 0.9);
+        border-bottom: 1px solid rgba(222, 222, 219, 0.75);
+        backdrop-filter: blur(18px);
+      }
 
       .nav {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 22px 0;
+        min-height: 72px;
       }
 
-      .brand { font-size: 20px; font-weight: 650; letter-spacing: -0.04em; }
+      .brand {
+        font-size: 21px;
+        font-weight: 680;
+        letter-spacing: -0.045em;
+      }
 
-      .nav a, .button {
+      .nav-right, .nav-links, .hero-actions, .hero-notes {
+        display: flex;
+        align-items: center;
+      }
+
+      .nav-right { gap: 28px; }
+      .nav-links { gap: 24px; }
+
+      .nav-link {
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 580;
+      }
+
+      .nav-link:hover { color: var(--ink); }
+
+      .button {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 42px;
-        padding: 0 17px;
-        border-radius: 9px;
+        min-height: 46px;
+        padding: 0 19px;
+        border: 0;
+        border-radius: 10px;
+        cursor: pointer;
+        background: var(--accent);
+        color: #fff;
         font-size: 14px;
-        font-weight: 600;
+        font-weight: 650;
+        transition: background 160ms ease, transform 160ms ease;
       }
 
-      .nav a { background: var(--ink); color: white; }
+      .button:hover { background: var(--accent-dark); transform: translateY(-1px); }
+      .button-dark { background: var(--ink); }
+      .button-dark:hover { background: #303034; }
+      .nav-cta { min-height: 40px; padding: 0 16px; }
+
+      .text-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 46px;
+        color: var(--ink);
+        font-size: 14px;
+        font-weight: 650;
+      }
+
+      .text-link::after { content: "↓"; color: var(--accent); }
 
       .hero {
         display: grid;
-        grid-template-columns: 1.05fr 0.95fr;
-        gap: 72px;
+        grid-template-columns: minmax(0, 0.92fr) minmax(470px, 0.88fr);
+        gap: clamp(48px, 7vw, 92px);
         align-items: center;
-        min-height: 630px;
-        padding: 72px 0 88px;
+        min-height: 690px;
+        padding: 78px 0 92px;
       }
 
-      .eyebrow { color: var(--accent); font-size: 14px; font-weight: 650; margin: 0 0 18px; }
-
-      h1, h2, h3, p { margin-top: 0; }
+      .eyebrow {
+        margin: 0 0 18px;
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.025em;
+      }
 
       h1 {
-        max-width: 650px;
-        margin-bottom: 23px;
-        font-size: clamp(47px, 5.5vw, 74px);
-        font-weight: 650;
-        letter-spacing: -0.065em;
-        line-height: 0.99;
+        max-width: 680px;
+        margin-bottom: 24px;
+        font-size: clamp(49px, 5.7vw, 76px);
+        font-weight: 660;
+        letter-spacing: -0.067em;
+        line-height: 0.98;
       }
 
       .hero-copy {
-        max-width: 530px;
+        max-width: 570px;
+        margin-bottom: 26px;
         color: var(--muted);
         font-size: 19px;
-        line-height: 1.5;
+        line-height: 1.52;
       }
 
-      .button { border: 0; cursor: pointer; background: var(--accent); color: white; margin-top: 12px; }
-      .button:hover { background: var(--accent-dark); }
+      .hero-actions { gap: 20px; }
+
+      .hero-notes {
+        flex-wrap: wrap;
+        gap: 10px 18px;
+        margin-top: 27px;
+        color: var(--soft-muted);
+        font-size: 12px;
+        font-weight: 580;
+      }
+
+      .hero-note { display: inline-flex; align-items: center; gap: 7px; }
+      .hero-note::before {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+        content: "";
+      }
 
       .briefing {
+        overflow: hidden;
         background: var(--panel);
         border: 1px solid var(--line);
-        border-radius: 18px;
-        padding: 25px;
-        box-shadow: 0 20px 45px rgba(26, 26, 30, 0.07);
+        border-radius: 20px;
+        box-shadow: 0 24px 54px rgba(26, 26, 30, 0.08);
       }
 
-      .briefing-top, .task { display: flex; justify-content: space-between; gap: 16px; }
-      .briefing-top { align-items: center; padding-bottom: 21px; border-bottom: 1px solid var(--line); }
-      .briefing-top strong { font-size: 17px; letter-spacing: -0.025em; }
-      .briefing-top span, .task time { color: var(--muted); font-size: 13px; }
+      .briefing-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: center;
+        padding: 22px 24px 18px;
+      }
 
-      .guidance { padding: 21px 0 17px; }
-      .guidance-label { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
-      .guidance p { margin: 8px 0 0; font-size: 18px; font-weight: 550; line-height: 1.35; letter-spacing: -0.025em; }
+      .briefing-date span {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--soft-muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.075em;
+        text-transform: uppercase;
+      }
 
-      .task { align-items: center; padding: 15px 0; border-top: 1px solid var(--line); }
-      .task:first-of-type { border-top: 0; }
-      .task-name { font-size: 14px; font-weight: 550; }
+      .briefing-date strong { font-size: 17px; letter-spacing: -0.025em; }
 
-      .section { padding: 105px 0; border-top: 1px solid var(--line); }
-      .section h2 { max-width: 710px; margin-bottom: 50px; font-size: clamp(35px, 4.3vw, 55px); letter-spacing: -0.055em; line-height: 1.03; }
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 29px;
+        padding: 0 10px;
+        border-radius: 999px;
+        background: var(--positive-soft);
+        color: var(--positive);
+        font-size: 11px;
+        font-weight: 700;
+      }
 
-      .steps { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); }
-      .step { padding: 26px 30px 18px 0; min-height: 185px; border-right: 1px solid var(--line); }
-      .step + .step { padding-left: 30px; }
+      .status-pill::before {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+        content: "";
+      }
+
+      .scenario-switch {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px;
+        margin: 0 24px;
+        padding: 4px;
+        border-radius: 10px;
+        background: #f1f1ef;
+      }
+
+      .scenario-switch button {
+        min-height: 34px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 7px;
+        cursor: pointer;
+        background: transparent;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      .scenario-switch button[aria-pressed="true"] {
+        background: #fff;
+        color: var(--ink);
+        box-shadow: 0 1px 5px rgba(20, 20, 24, 0.08);
+      }
+
+      .scenario-panel { padding: 0 24px 23px; }
+      .scenario-panel[hidden] { display: none; }
+
+      .guidance { padding: 20px 0 17px; }
+      .guidance-label {
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 750;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+
+      .guidance p {
+        margin: 7px 0 0;
+        font-size: 17px;
+        font-weight: 580;
+        letter-spacing: -0.025em;
+        line-height: 1.36;
+      }
+
+      .plan-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 7px;
+        margin-bottom: 10px;
+      }
+
+      .plan-metric {
+        min-width: 0;
+        padding: 10px;
+        border-radius: 9px;
+        background: var(--accent-pale);
+      }
+
+      .plan-metric strong, .plan-metric span { display: block; }
+      .plan-metric strong { margin-bottom: 2px; font-size: 14px; letter-spacing: -0.02em; }
+      .plan-metric span { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+
+      .task {
+        display: grid;
+        grid-template-columns: 26px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        min-height: 54px;
+        border-top: 1px solid var(--line);
+      }
+
+      .task-mark {
+        display: grid;
+        width: 23px;
+        height: 23px;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        color: var(--accent);
+        font-size: 10px;
+        font-weight: 750;
+      }
+
+      .task-mark.done { border-color: var(--positive-soft); background: var(--positive-soft); color: var(--positive); }
+      .task-name { display: block; margin-bottom: 2px; font-size: 13px; font-weight: 650; }
+      .task-reason { display: block; color: var(--soft-muted); font-size: 10px; }
+      .task time, .task-state { color: var(--muted); font-size: 11px; font-weight: 600; }
+      .task-state.moved { color: var(--accent); }
+
+      .logic-band {
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .logic-band-inner {
+        display: grid;
+        grid-template-columns: 0.75fr 1.25fr;
+        gap: 70px;
+        align-items: center;
+        padding: 34px 0;
+      }
+
+      .logic-band h2 {
+        margin: 0;
+        font-size: 23px;
+        font-weight: 650;
+        letter-spacing: -0.04em;
+        line-height: 1.08;
+      }
+
+      .context-list {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .context-list li {
+        padding: 9px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--muted);
+        background: var(--canvas);
+        font-size: 12px;
+        font-weight: 620;
+      }
+
+      .section { padding: clamp(82px, 10vw, 122px) 0; border-bottom: 1px solid var(--line); }
+      .section-white { background: #fff; }
+      .section-dark { background: var(--ink); color: #fff; }
+
+      .section-heading {
+        display: grid;
+        grid-template-columns: 0.55fr 1.45fr;
+        gap: 50px;
+        align-items: start;
+        margin-bottom: 54px;
+      }
+
+      .section-heading .eyebrow { margin: 8px 0 0; }
+
+      .section-heading h2 {
+        max-width: 790px;
+        margin-bottom: 0;
+        font-size: clamp(37px, 4.6vw, 58px);
+        font-weight: 650;
+        letter-spacing: -0.06em;
+        line-height: 1.02;
+      }
+
+      .logic-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel);
+        overflow: hidden;
+      }
+
+      .logic-stage { min-height: 320px; padding: 27px; }
+      .logic-stage + .logic-stage { border-left: 1px solid var(--line); }
+      .logic-stage.engine { background: var(--accent); color: #fff; }
+
+      .stage-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        align-items: center;
+        margin-bottom: 52px;
+      }
+
+      .stage-number { color: var(--accent); font-size: 12px; font-weight: 750; }
+      .engine .stage-number { color: #d7d7f4; }
+      .stage-kicker { color: var(--soft-muted); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+      .engine .stage-kicker { color: #d7d7f4; }
+      .logic-stage h3 { margin: 0 0 12px; font-size: 23px; letter-spacing: -0.035em; }
+      .logic-stage > p { max-width: 285px; margin-bottom: 22px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+      .engine > p { color: #ddddf3; }
+
+      .tag-list { display: flex; flex-wrap: wrap; gap: 7px; margin: 0; padding: 0; list-style: none; }
+      .tag-list li {
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--canvas);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 630;
+      }
+
+      .engine .tag-list li { border-color: rgba(255, 255, 255, 0.18); background: rgba(255, 255, 255, 0.09); color: #fff; }
+
+      .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+
+      .feature-card {
+        display: flex;
+        min-height: 285px;
+        flex-direction: column;
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--canvas);
+      }
+
+      .feature-number { color: var(--accent); font-size: 11px; font-weight: 750; }
+      .feature-card h3 { margin: 32px 0 7px; font-size: 20px; letter-spacing: -0.03em; }
+      .feature-card > p { max-width: 300px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.48; }
+      .micro-ui { margin-top: auto; padding-top: 22px; }
+
+      .micro-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        min-height: 31px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .micro-row strong { color: var(--ink); font-size: 11px; }
+      .micro-pill { padding: 4px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+      .bars { display: flex; height: 47px; gap: 7px; align-items: end; }
+      .bar { flex: 1; min-height: 8px; border-radius: 4px 4px 1px 1px; background: #dadae6; }
+      .bar.active { background: var(--accent); }
+      .bar.light { background: #e7e7e4; }
+
+      .capacity-line { display: grid; grid-template-columns: 56px 1fr; gap: 10px; align-items: center; margin-top: 8px; color: var(--soft-muted); font-size: 10px; }
+      .capacity-track { height: 7px; border-radius: 99px; background: #e7e7e4; overflow: hidden; }
+      .capacity-fill { height: 100%; border-radius: inherit; background: var(--accent); }
+      .capacity-fill.medium { width: 58%; }
+      .capacity-fill.low { width: 34%; background: #999ac8; }
+
+      .adapt-grid {
+        display: grid;
+        grid-template-columns: 0.8fr 1.2fr;
+        gap: clamp(55px, 8vw, 105px);
+        align-items: center;
+      }
+
+      .adapt-copy h2 {
+        margin-bottom: 22px;
+        font-size: clamp(39px, 4.8vw, 59px);
+        font-weight: 650;
+        letter-spacing: -0.06em;
+        line-height: 1.01;
+      }
+
+      .adapt-copy > p { max-width: 470px; color: #b9b9c0; font-size: 16px; line-height: 1.55; }
+
+      .adapt-points { display: grid; gap: 0; margin-top: 34px; }
+      .adapt-point { display: grid; grid-template-columns: 25px 1fr; gap: 11px; padding: 13px 0; border-top: 1px solid #39393e; }
+      .adapt-point span { color: #a3a4dc; font-size: 12px; font-weight: 750; }
+      .adapt-point strong { font-size: 14px; font-weight: 620; }
+
+      .reset-card { padding: 26px; border: 1px solid #3d3d42; border-radius: 18px; background: #222226; }
+      .reset-alert {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: center;
+        margin-bottom: 20px;
+        padding: 13px 14px;
+        border: 1px solid rgba(191, 192, 239, 0.22);
+        border-radius: 10px;
+        background: rgba(74, 75, 152, 0.22);
+        color: #dedefa;
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      .reset-alert span { color: #aeb0e3; font-size: 10px; }
+      .reset-row { display: grid; grid-template-columns: 58px 1fr auto; gap: 13px; align-items: center; min-height: 58px; border-top: 1px solid #39393e; }
+      .reset-row:first-of-type { border-top: 0; }
+      .reset-time { color: #85858e; font-size: 11px; }
+      .reset-task strong, .reset-task span { display: block; }
+      .reset-task strong { margin-bottom: 3px; font-size: 13px; }
+      .reset-task span { color: #8f8f98; font-size: 10px; }
+      .reset-state { color: #aeb0e3; font-size: 10px; font-weight: 700; }
+      .reset-state.protected { color: #97ceb2; }
+
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border-top: 1px solid var(--line);
+      }
+
+      .step { min-height: 220px; padding: 25px 27px 0 0; border-right: 1px solid var(--line); }
+      .step + .step { padding-left: 27px; }
       .step:last-child { border-right: 0; }
-      .step-number { color: var(--accent); font-size: 13px; font-weight: 650; }
-      h3 { margin: 39px 0 8px; font-size: 19px; letter-spacing: -0.025em; }
-      .step p { max-width: 270px; margin: 0; color: var(--muted); font-size: 15px; line-height: 1.48; }
+      .step-number { color: var(--accent); font-size: 12px; font-weight: 750; }
+      .step h3 { margin: 54px 0 8px; font-size: 19px; letter-spacing: -0.025em; }
+      .step p { max-width: 240px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
 
-      .waitlist { background: var(--ink); color: white; }
-      .waitlist-inner { display: grid; grid-template-columns: 1fr 0.85fr; gap: 70px; align-items: center; padding: 96px 0; }
-      .waitlist h2 { margin: 0; font-size: clamp(37px, 4.5vw, 58px); line-height: 1.02; letter-spacing: -0.06em; }
-      .waitlist p { margin: 16px 0 0; color: #b6b6bb; font-size: 16px; line-height: 1.5; }
+      .compare {
+        display: grid;
+        grid-template-columns: 0.8fr 1.2fr;
+        gap: 80px;
+        align-items: start;
+      }
 
-      form { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+      .compare h2 { margin-bottom: 16px; font-size: clamp(36px, 4.4vw, 53px); font-weight: 650; letter-spacing: -0.055em; line-height: 1.03; }
+      .compare-copy p { max-width: 440px; color: var(--muted); font-size: 15px; line-height: 1.5; }
+      .compare-table { border-top: 1px solid var(--line); }
+      .compare-head, .compare-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+      .compare-head { padding: 0 0 13px; color: var(--soft-muted); font-size: 11px; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; }
+      .compare-row { min-height: 79px; align-items: center; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+      .compare-row strong { color: var(--ink); font-weight: 650; }
+
+      .faq-grid { display: grid; grid-template-columns: 0.7fr 1.3fr; gap: 80px; align-items: start; }
+      .faq-grid h2 { margin: 0; font-size: clamp(36px, 4vw, 49px); font-weight: 650; letter-spacing: -0.055em; line-height: 1.04; }
+      .faq-list { border-top: 1px solid var(--line); }
+      details { border-bottom: 1px solid var(--line); }
+      summary { position: relative; padding: 21px 40px 21px 0; cursor: pointer; font-size: 15px; font-weight: 650; list-style: none; }
+      summary::-webkit-details-marker { display: none; }
+      summary::after { position: absolute; top: 20px; right: 3px; color: var(--accent); content: "+"; font-size: 20px; font-weight: 400; }
+      details[open] summary::after { content: "−"; }
+      details p { max-width: 640px; margin: -4px 0 21px; color: var(--muted); font-size: 14px; line-height: 1.52; }
+
+      .waitlist { background: var(--accent); color: #fff; }
+      .waitlist-inner { display: grid; grid-template-columns: 1fr 0.85fr; gap: 75px; align-items: center; padding: 94px 0; }
+      .waitlist h2 { margin: 0; font-size: clamp(39px, 4.7vw, 59px); font-weight: 650; letter-spacing: -0.06em; line-height: 1.01; }
+      .waitlist p { margin: 15px 0 0; color: #d6d6ef; font-size: 15px; line-height: 1.5; }
+
+      form { display: grid; grid-template-columns: 1fr auto; gap: 9px; }
       input {
         width: 100%;
-        min-height: 48px;
+        min-height: 50px;
         padding: 0 14px;
-        border: 1px solid #55555a;
-        border-radius: 9px;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 10px;
         outline: none;
-        background: transparent;
-        color: white;
-        font: inherit;
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
       }
-      input::placeholder { color: #96969d; }
-      input:focus { border-color: #c2c2e8; box-shadow: 0 0 0 3px rgba(194, 194, 232, 0.16); }
-      form .button { min-height: 48px; margin: 0; }
-      .form-message { min-height: 22px; grid-column: 1 / -1; margin: 2px 0 0; color: #c2c2e8; font-size: 13px; }
 
-      footer { padding: 22px 0 34px; background: var(--ink); color: #8f8f96; font-size: 13px; }
+      input::placeholder { color: #c9c9e3; }
+      input:focus { border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15); }
+      form .button { min-height: 50px; background: #fff; color: var(--accent-dark); }
+      form .button:hover { background: #f3f3fa; }
+      .form-message { min-height: 20px; grid-column: 1 / -1; margin: 2px 0 0; color: #e4e4f6; font-size: 12px; }
 
-      @media (max-width: 760px) {
+      footer { padding: 23px 0 32px; background: var(--ink); color: #8f8f96; font-size: 12px; }
+      .footer-inner { display: flex; justify-content: space-between; gap: 30px; align-items: center; }
+      .footer-links { display: flex; gap: 20px; }
+      .footer-links a:hover { color: #fff; }
+
+      @media (max-width: 940px) {
+        .hero { grid-template-columns: 1fr; gap: 55px; min-height: auto; padding: 70px 0 82px; }
+        .hero-copy { max-width: 660px; }
+        .briefing { width: min(100%, 610px); }
+        .logic-band-inner, .section-heading, .adapt-grid, .compare, .faq-grid, .waitlist-inner { grid-template-columns: 1fr; }
+        .logic-band-inner { gap: 20px; }
+        .context-list { justify-content: flex-start; }
+        .section-heading { gap: 13px; }
+        .section-heading .eyebrow { margin-top: 0; }
+        .logic-grid, .feature-grid { grid-template-columns: 1fr 1fr; }
+        .logic-stage:last-child { grid-column: 1 / -1; border-top: 1px solid var(--line); border-left: 0; }
+        .adapt-grid, .compare, .faq-grid, .waitlist-inner { gap: 45px; }
+        .steps { grid-template-columns: 1fr 1fr; }
+        .step:nth-child(2) { border-right: 0; }
+        .step:nth-child(n + 3) { border-top: 1px solid var(--line); }
+      }
+
+      @media (max-width: 680px) {
         .wrap { width: min(100% - 32px, 560px); }
-        .hero, .waitlist-inner { grid-template-columns: 1fr; gap: 42px; }
-        .hero { min-height: auto; padding: 58px 0 72px; }
+        .nav { min-height: 64px; }
+        .nav-links { display: none; }
+        .nav-right { gap: 0; }
+        .nav-cta { min-height: 38px; padding: 0 13px; }
+        .hero { padding: 55px 0 67px; }
+        h1 { font-size: clamp(42px, 13vw, 56px); }
         .hero-copy { font-size: 17px; }
-        .section { padding: 72px 0; }
-        .section h2 { margin-bottom: 32px; }
-        .steps { grid-template-columns: 1fr; }
-        .step, .step + .step { min-height: auto; padding: 24px 0; border-right: 0; border-bottom: 1px solid var(--line); }
-        .step:last-child { border-bottom: 0; }
-        h3 { margin-top: 25px; }
-        .waitlist-inner { padding: 70px 0; }
+        .hero-actions { align-items: flex-start; flex-direction: column; gap: 4px; }
+        .hero-notes { display: grid; }
+        .briefing-head { padding: 20px 18px 16px; }
+        .scenario-switch { margin: 0 18px; }
+        .scenario-panel { padding: 0 18px 20px; }
+        .guidance p { font-size: 16px; }
+        .plan-metric { padding: 8px; }
+        .plan-metric strong { font-size: 12px; }
+        .task { grid-template-columns: 24px 1fr auto; gap: 8px; }
+        .logic-band-inner { padding: 28px 0; }
+        .section { padding: 74px 0; }
+        .section-heading { margin-bottom: 37px; }
+        .section-heading h2 { font-size: clamp(36px, 11vw, 48px); }
+        .logic-grid, .feature-grid, .steps { grid-template-columns: 1fr; }
+        .logic-stage { min-height: auto; padding: 23px; }
+        .logic-stage + .logic-stage, .logic-stage:last-child { grid-column: auto; border-top: 1px solid var(--line); border-left: 0; }
+        .stage-top { margin-bottom: 34px; }
+        .feature-card { min-height: 255px; }
+        .reset-card { padding: 18px; }
+        .reset-row { grid-template-columns: 50px 1fr; }
+        .reset-state { grid-column: 2; margin-top: -14px; padding-bottom: 9px; }
+        .step, .step + .step { min-height: auto; padding: 22px 0 28px; border-right: 0; border-top: 1px solid var(--line); }
+        .step:first-child { border-top: 0; }
+        .step h3 { margin-top: 33px; }
+        .compare-head, .compare-row { grid-template-columns: 0.8fr 1.2fr; gap: 14px; }
+        .compare-row { min-height: 85px; }
+        .waitlist-inner { padding: 75px 0; }
         form { grid-template-columns: 1fr; }
+        .footer-inner { align-items: flex-start; flex-direction: column; }
       }
 
-      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        .button { transition: none; }
+      }
     </style>
   </head>
   <body>
-    <header class="wrap nav">
-      <a class="brand" href="#top" aria-label="Arcadia home">Arcadia</a>
-      <a href="#waitlist">Join the waitlist</a>
-    </header>
+    <div class="nav-shell">
+      <header class="wrap nav">
+        <a class="brand" href="#top" aria-label="Arcadia home">Arcadia</a>
+        <div class="nav-right">
+          <nav class="nav-links" aria-label="Primary navigation">
+            <a class="nav-link" href="#product">Product</a>
+            <a class="nav-link" href="#adapts">How it adapts</a>
+          </nav>
+          <a class="button button-dark nav-cta" href="#waitlist">Get early access</a>
+        </div>
+      </header>
+    </div>
 
     <main id="top">
       <section class="wrap hero" aria-labelledby="hero-title">
         <div>
-          <p class="eyebrow">A calmer way to stay on track</p>
-          <h1 id="hero-title">Turn school chaos into a plan that works.</h1>
+          <p class="eyebrow">Adaptive planning for students</p>
+          <h1 id="hero-title">A plan that changes when your day does.</h1>
           <p class="hero-copy">
-            Arcadia brings your workload, sleep, training and deadlines into one calm place; then helps you decide what to do next.
+            Arcadia balances deadlines, available time, training and sleep—then shows what to do now and what can wait.
           </p>
-          <a class="button" href="#waitlist">Join the waitlist</a>
+          <div class="hero-actions">
+            <a class="button" href="#waitlist">Get early access</a>
+            <a class="text-link" href="#product">See how it works</a>
+          </div>
+          <div class="hero-notes" aria-label="Arcadia highlights">
+            <span class="hero-note">Built around real capacity</span>
+            <span class="hero-note">Recovery stays visible</span>
+            <span class="hero-note">Plans reset without starting over</span>
+          </div>
         </div>
 
-        <aside class="briefing" aria-label="Example Arcadia daily briefing">
-          <div class="briefing-top"><strong>Today</strong><span>Wednesday, 18 June</span></div>
-          <div class="guidance">
-            <div class="guidance-label">Your guidance</div>
-            <p>Keep tonight light. Finish the maths revision, outline English, then get a proper night of sleep.</p>
+        <aside class="briefing" aria-label="Interactive example of an Arcadia daily plan">
+          <div class="briefing-head">
+            <div class="briefing-date"><span>Your plan</span><strong>Wednesday, 18 June</strong></div>
+            <div class="status-pill">Balanced</div>
           </div>
-          <div class="task"><span class="task-name">Maths revision</span><time>35 min</time></div>
-          <div class="task"><span class="task-name">English outline</span><time>20 min</time></div>
-          <div class="task"><span class="task-name">Sleep</span><time>10:45 pm</time></div>
+
+          <div class="scenario-switch" role="group" aria-label="Choose a plan scenario">
+            <button type="button" data-scenario="original" aria-pressed="true">Original plan</button>
+            <button type="button" data-scenario="delay" aria-pressed="false">Training +45m</button>
+          </div>
+
+          <div class="scenario-panel" data-panel="original">
+            <div class="guidance">
+              <div class="guidance-label">Arcadia briefing</div>
+              <p>Finish maths first, keep English short, then protect tonight’s sleep target.</p>
+            </div>
+            <div class="plan-metrics" aria-label="Plan summary">
+              <div class="plan-metric"><strong>55 min</strong><span>focused work</span></div>
+              <div class="plan-metric"><strong>3</strong><span>priorities</span></div>
+              <div class="plan-metric"><strong>10:45</strong><span>sleep target</span></div>
+            </div>
+            <div class="task">
+              <span class="task-mark">1</span>
+              <span><span class="task-name">Maths revision</span><span class="task-reason">Exam in 4 days</span></span>
+              <time>4:15 pm</time>
+            </div>
+            <div class="task">
+              <span class="task-mark">2</span>
+              <span><span class="task-name">Training</span><span class="task-reason">Fixed commitment</span></span>
+              <time>5:00 pm</time>
+            </div>
+            <div class="task">
+              <span class="task-mark">3</span>
+              <span><span class="task-name">English outline</span><span class="task-reason">Keeps Friday clear</span></span>
+              <time>7:15 pm</time>
+            </div>
+            <div class="task">
+              <span class="task-mark">4</span>
+              <span><span class="task-name">Sleep</span><span class="task-reason">Recovery protected</span></span>
+              <time>10:45 pm</time>
+            </div>
+          </div>
+
+          <div class="scenario-panel" data-panel="delay" hidden>
+            <div class="guidance">
+              <div class="guidance-label">Plan updated</div>
+              <p>Training ran late. English moves to Thursday; maths and sleep stay protected.</p>
+            </div>
+            <div class="plan-metrics" aria-label="Updated plan summary">
+              <div class="plan-metric"><strong>35 min</strong><span>focused work</span></div>
+              <div class="plan-metric"><strong>1 moved</strong><span>conflict resolved</span></div>
+              <div class="plan-metric"><strong>10:45</strong><span>sleep target</span></div>
+            </div>
+            <div class="task">
+              <span class="task-mark done">✓</span>
+              <span><span class="task-name">Maths revision</span><span class="task-reason">Completed before training</span></span>
+              <span class="task-state">Done</span>
+            </div>
+            <div class="task">
+              <span class="task-mark done">✓</span>
+              <span><span class="task-name">Training</span><span class="task-reason">Finished 45 min late</span></span>
+              <span class="task-state">Done</span>
+            </div>
+            <div class="task">
+              <span class="task-mark">→</span>
+              <span><span class="task-name">English outline</span><span class="task-reason">Thursday still has capacity</span></span>
+              <span class="task-state moved">Thu 4:30</span>
+            </div>
+            <div class="task">
+              <span class="task-mark">4</span>
+              <span><span class="task-name">Sleep</span><span class="task-reason">No work added tonight</span></span>
+              <span class="task-state">10:45 pm</span>
+            </div>
+          </div>
         </aside>
       </section>
 
-      <section class="section">
+      <section class="logic-band" aria-labelledby="context-title">
+        <div class="wrap logic-band-inner">
+          <h2 id="context-title">One plan, built from the whole picture.</h2>
+          <ul class="context-list">
+            <li>Deadlines</li>
+            <li>Task effort</li>
+            <li>Available time</li>
+            <li>Classes</li>
+            <li>Training</li>
+            <li>Sleep targets</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section" id="product" aria-labelledby="product-title">
         <div class="wrap">
-          <p class="eyebrow">Built for real student life</p>
-          <h2>More than a timetable. A clear way forward when everything competes for your attention.</h2>
+          <div class="section-heading">
+            <p class="eyebrow">Inside the plan</p>
+            <h2 id="product-title">From scattered commitments to one clear next step.</h2>
+          </div>
+          <div class="logic-grid">
+            <article class="logic-stage">
+              <div class="stage-top"><span class="stage-number">01</span><span class="stage-kicker">You add</span></div>
+              <h3>Your real week</h3>
+              <p>Enough context to plan well—without rebuilding your life in another app.</p>
+              <ul class="tag-list">
+                <li>Tasks</li><li>Due dates</li><li>Effort</li><li>Fixed plans</li><li>Sleep</li>
+              </ul>
+            </article>
+            <article class="logic-stage engine">
+              <div class="stage-top"><span class="stage-number">02</span><span class="stage-kicker">Arcadia weighs</span></div>
+              <h3>Pressure and capacity</h3>
+              <p>Urgency matters, but so do time, energy, conflicts and recovery.</p>
+              <ul class="tag-list">
+                <li>Urgency</li><li>Impact</li><li>Capacity</li><li>Conflicts</li><li>Recovery</li>
+              </ul>
+            </article>
+            <article class="logic-stage">
+              <div class="stage-top"><span class="stage-number">03</span><span class="stage-kicker">You get</span></div>
+              <h3>A plan you can use</h3>
+              <p>Know what to do now, what comes next and what is safe to move.</p>
+              <ul class="tag-list">
+                <li>Daily focus</li><li>Time blocks</li><li>Weekly outlook</li><li>Automatic resets</li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-white" aria-labelledby="features-title">
+        <div class="wrap">
+          <div class="section-heading">
+            <p class="eyebrow">What Arcadia does</p>
+            <h2 id="features-title">Less time planning. Better decisions.</h2>
+          </div>
+          <div class="feature-grid">
+            <article class="feature-card">
+              <span class="feature-number">01</span>
+              <h3>Daily briefing</h3>
+              <p>Three priorities, the reason behind them and one clear place to start.</p>
+              <div class="micro-ui">
+                <div class="micro-row"><strong>Start here</strong><span class="micro-pill">Maths · 35m</span></div>
+                <div class="micro-row"><span>Then</span><span>English · 20m</span></div>
+              </div>
+            </article>
+            <article class="feature-card">
+              <span class="feature-number">02</span>
+              <h3>Workload forecast</h3>
+              <p>See pressure building before the week fills up.</p>
+              <div class="micro-ui bars" aria-label="Illustrative weekly workload chart">
+                <span class="bar light" style="height: 28%"></span>
+                <span class="bar" style="height: 48%"></span>
+                <span class="bar active" style="height: 82%"></span>
+                <span class="bar" style="height: 57%"></span>
+                <span class="bar light" style="height: 34%"></span>
+                <span class="bar light" style="height: 18%"></span>
+                <span class="bar light" style="height: 22%"></span>
+              </div>
+            </article>
+            <article class="feature-card">
+              <span class="feature-number">03</span>
+              <h3>Capacity-aware planning</h3>
+              <p>Fit work around the time you actually have.</p>
+              <div class="micro-ui">
+                <div class="capacity-line"><span>Wednesday</span><div class="capacity-track"><div class="capacity-fill medium"></div></div></div>
+                <div class="capacity-line"><span>Thursday</span><div class="capacity-track"><div class="capacity-fill low"></div></div></div>
+              </div>
+            </article>
+            <article class="feature-card">
+              <span class="feature-number">04</span>
+              <h3>Deadline radar</h3>
+              <p>Separate what is urgent from what is safe to defer.</p>
+              <div class="micro-ui">
+                <div class="micro-row"><strong>Maths exam</strong><span class="micro-pill">4 days</span></div>
+                <div class="micro-row"><span>History draft</span><span>8 days</span></div>
+              </div>
+            </article>
+            <article class="feature-card">
+              <span class="feature-number">05</span>
+              <h3>Instant re-plan</h3>
+              <p>Redistribute unfinished work without rebuilding everything.</p>
+              <div class="micro-ui">
+                <div class="micro-row"><span>English outline</span><span class="micro-pill">Moved → Thu</span></div>
+                <div class="micro-row"><strong>Sleep target</strong><span>Protected</span></div>
+              </div>
+            </article>
+            <article class="feature-card">
+              <span class="feature-number">06</span>
+              <h3>Recovery guardrails</h3>
+              <p>Keep sleep and lighter days visible alongside schoolwork.</p>
+              <div class="micro-ui">
+                <div class="micro-row"><strong>Tonight</strong><span class="micro-pill">10:45 pm</span></div>
+                <div class="micro-row"><span>Tomorrow load</span><span>Light</span></div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-dark" id="adapts" aria-labelledby="adapt-title">
+        <div class="wrap adapt-grid">
+          <div class="adapt-copy">
+            <p class="eyebrow">When plans change</p>
+            <h2 id="adapt-title">Reset the day, not your progress.</h2>
+            <p>Arcadia finds the smallest useful adjustment: keep what matters, move what can wait and protect the rest of the week.</p>
+            <div class="adapt-points">
+              <div class="adapt-point"><span>01</span><strong>Re-check today’s remaining capacity</strong></div>
+              <div class="adapt-point"><span>02</span><strong>Find the next safe opening</strong></div>
+              <div class="adapt-point"><span>03</span><strong>Keep deadlines and recovery in view</strong></div>
+            </div>
+          </div>
+          <div class="reset-card" aria-label="Example of Arcadia adapting a plan after training runs late">
+            <div class="reset-alert"><strong>Training finished 45 min late</strong><span>Plan rebuilt</span></div>
+            <div class="reset-row">
+              <span class="reset-time">4:15 pm</span>
+              <span class="reset-task"><strong>Maths revision</strong><span>Closest deadline</span></span>
+              <span class="reset-state protected">Kept</span>
+            </div>
+            <div class="reset-row">
+              <span class="reset-time">7:15 pm</span>
+              <span class="reset-task"><strong>English outline</strong><span>Thursday has capacity</span></span>
+              <span class="reset-state">Moved → Thu</span>
+            </div>
+            <div class="reset-row">
+              <span class="reset-time">10:45 pm</span>
+              <span class="reset-task"><strong>Sleep target</strong><span>No work added tonight</span></span>
+              <span class="reset-state protected">Protected</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="workflow-title">
+        <div class="wrap">
+          <div class="section-heading">
+            <p class="eyebrow">How it works</p>
+            <h2 id="workflow-title">A useful plan in four simple moves.</h2>
+          </div>
           <div class="steps">
             <article class="step">
-              <div class="step-number">01</div>
-              <h3>Bring it all together</h3>
-              <p>Add assignments, exams, training, commitments and sleep goals without reorganising your whole life.</p>
+              <span class="step-number">01</span>
+              <h3>Capture</h3>
+              <p>Add the task, deadline and rough effort.</p>
             </article>
             <article class="step">
-              <div class="step-number">02</div>
-              <h3>Get a realistic plan</h3>
-              <p>Arcadia turns competing priorities into a plan that makes room for meaningful work and recovery.</p>
+              <span class="step-number">02</span>
+              <h3>Add context</h3>
+              <p>Set classes, commitments, training and sleep.</p>
             </article>
             <article class="step">
-              <div class="step-number">03</div>
-              <h3>Adapt when life changes</h3>
-              <p>Missed a task or a late training session? Arcadia helps you reset without the panic spiral.</p>
+              <span class="step-number">03</span>
+              <h3>Prioritise</h3>
+              <p>Arcadia weighs urgency against real capacity.</p>
             </article>
+            <article class="step">
+              <span class="step-number">04</span>
+              <h3>Rebalance</h3>
+              <p>Complete, skip or move something; the plan adjusts.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-white" aria-labelledby="compare-title">
+        <div class="wrap compare">
+          <div class="compare-copy">
+            <p class="eyebrow">Not another timetable</p>
+            <h2 id="compare-title">A planner that helps decide.</h2>
+            <p>Most tools remember the plan. Arcadia keeps it useful when the week changes.</p>
+          </div>
+          <div class="compare-table" role="table" aria-label="Standard planner compared with Arcadia">
+            <div class="compare-head" role="row"><span role="columnheader">Standard planner</span><span role="columnheader">Arcadia</span></div>
+            <div class="compare-row" role="row"><span role="cell">Stores tasks</span><strong role="cell">Shows what comes next</strong></div>
+            <div class="compare-row" role="row"><span role="cell">Needs manual reshuffling</span><strong role="cell">Rebalances after changes</strong></div>
+            <div class="compare-row" role="row"><span role="cell">Fills available time</span><strong role="cell">Balances work and recovery</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="faq-title">
+        <div class="wrap faq-grid">
+          <div>
+            <p class="eyebrow">The short version</p>
+            <h2 id="faq-title">A few useful answers.</h2>
+          </div>
+          <div class="faq-list">
+            <details>
+              <summary>Is Arcadia a calendar or task manager?</summary>
+              <p>It sits one layer above both. Arcadia uses your work and commitments to decide what deserves attention now.</p>
+            </details>
+            <details>
+              <summary>What happens when I miss a task?</summary>
+              <p>Arcadia checks urgency and future capacity, then moves the task to the safest available place.</p>
+            </details>
+            <details>
+              <summary>Does it plan around sport and other commitments?</summary>
+              <p>Yes. Classes, training, shifts and personal commitments shape the time Arcadia treats as available.</p>
+            </details>
+            <details>
+              <summary>Why include sleep?</summary>
+              <p>Because a plan that only works by borrowing from recovery is not a realistic plan.</p>
+            </details>
           </div>
         </div>
       </section>
@@ -231,33 +1006,57 @@
       <section class="waitlist" id="waitlist" aria-labelledby="waitlist-title">
         <div class="wrap waitlist-inner">
           <div>
-            <h2 id="waitlist-title">A better plan starts here.</h2>
-            <p>Join the waitlist to hear when Arcadia is ready for its first students.</p>
+            <h2 id="waitlist-title">Start each day knowing what matters.</h2>
+            <p>Join the first group of students testing Arcadia.</p>
           </div>
           <form id="waitlist-form" novalidate>
             <label class="sr-only" for="email">Email address</label>
-            <input id="email" name="email" type="email" autocomplete="email" placeholder="Your email address" required />
-            <button class="button" type="submit">Join waitlist</button>
+            <input id="email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="Your email address" required />
+            <button class="button" type="submit">Request early access</button>
             <p class="form-message" id="form-message" aria-live="polite"></p>
           </form>
         </div>
       </section>
     </main>
 
-    <footer><div class="wrap">© 2026 Arcadia</div></footer>
+    <footer>
+      <div class="wrap footer-inner">
+        <span>© 2026 Arcadia</span>
+        <div class="footer-links"><a href="#product">Product</a><a href="#adapts">How it adapts</a></div>
+      </div>
+    </footer>
 
     <script>
+      const scenarioButtons = document.querySelectorAll('[data-scenario]');
+      const scenarioPanels = document.querySelectorAll('[data-panel]');
+
+      scenarioButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          const selectedScenario = button.dataset.scenario;
+
+          scenarioButtons.forEach((item) => {
+            item.setAttribute('aria-pressed', String(item === button));
+          });
+
+          scenarioPanels.forEach((panel) => {
+            panel.hidden = panel.dataset.panel !== selectedScenario;
+          });
+        });
+      });
+
       const form = document.querySelector('#waitlist-form');
       const email = document.querySelector('#email');
       const message = document.querySelector('#form-message');
 
       form.addEventListener('submit', (event) => {
         event.preventDefault();
+
         if (!email.validity.valid) {
-          message.textContent = 'Enter a valid email address to join the waitlist.';
+          message.textContent = 'Enter a valid email address to request early access.';
           email.focus();
           return;
         }
+
         message.textContent = 'You’re on the list. We’ll be in touch.';
         form.reset();
       });
