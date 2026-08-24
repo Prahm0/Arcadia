@@ -147,13 +147,15 @@
       .text-link::after { content: "↓"; color: var(--accent); }
 
       .hero {
-        display: grid;
-        grid-template-columns: minmax(0, 0.92fr) minmax(470px, 0.88fr);
-        gap: clamp(48px, 7vw, 92px);
+        display: flex;
         align-items: center;
+        justify-content: center;
         min-height: 690px;
         padding: 78px 0 92px;
+        text-align: center;
       }
+
+      .hero-content { width: min(100%, 820px); }
 
       .eyebrow {
         margin: 0 0 18px;
@@ -165,7 +167,7 @@
 
       h1 {
         max-width: 680px;
-        margin-bottom: 24px;
+        margin: 0 auto 24px;
         font-size: clamp(49px, 5.7vw, 76px);
         font-weight: 660;
         letter-spacing: -0.067em;
@@ -174,16 +176,17 @@
 
       .hero-copy {
         max-width: 570px;
-        margin-bottom: 26px;
+        margin: 0 auto 26px;
         color: var(--muted);
         font-size: 19px;
         line-height: 1.52;
       }
 
-      .hero-actions { gap: 20px; }
+      .hero-actions { justify-content: center; gap: 20px; }
 
       .hero-notes {
         flex-wrap: wrap;
+        justify-content: center;
         gap: 10px 18px;
         margin-top: 27px;
         color: var(--soft-muted);
@@ -199,148 +202,6 @@
         background: var(--accent);
         content: "";
       }
-
-      .briefing {
-        overflow: hidden;
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 20px;
-        box-shadow: 0 24px 54px rgba(26, 26, 30, 0.08);
-      }
-
-      .briefing-head {
-        display: flex;
-        justify-content: space-between;
-        gap: 18px;
-        align-items: center;
-        padding: 22px 24px 18px;
-      }
-
-      .briefing-date span {
-        display: block;
-        margin-bottom: 4px;
-        color: var(--soft-muted);
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.075em;
-        text-transform: uppercase;
-      }
-
-      .briefing-date strong { font-size: 17px; letter-spacing: -0.025em; }
-
-      .status-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        min-height: 29px;
-        padding: 0 10px;
-        border-radius: 999px;
-        background: var(--positive-soft);
-        color: var(--positive);
-        font-size: 11px;
-        font-weight: 700;
-      }
-
-      .status-pill::before {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: currentColor;
-        content: "";
-      }
-
-      .scenario-switch {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 4px;
-        margin: 0 24px;
-        padding: 4px;
-        border-radius: 10px;
-        background: #f1f1ef;
-      }
-
-      .scenario-switch button {
-        min-height: 34px;
-        padding: 0 10px;
-        border: 0;
-        border-radius: 7px;
-        cursor: pointer;
-        background: transparent;
-        color: var(--muted);
-        font-size: 12px;
-        font-weight: 650;
-      }
-
-      .scenario-switch button[aria-pressed="true"] {
-        background: #fff;
-        color: var(--ink);
-        box-shadow: 0 1px 5px rgba(20, 20, 24, 0.08);
-      }
-
-      .scenario-panel { padding: 0 24px 23px; }
-      .scenario-panel[hidden] { display: none; }
-
-      .guidance { padding: 20px 0 17px; }
-      .guidance-label {
-        color: var(--accent);
-        font-size: 11px;
-        font-weight: 750;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
-      }
-
-      .guidance p {
-        margin: 7px 0 0;
-        font-size: 17px;
-        font-weight: 580;
-        letter-spacing: -0.025em;
-        line-height: 1.36;
-      }
-
-      .plan-metrics {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 7px;
-        margin-bottom: 10px;
-      }
-
-      .plan-metric {
-        min-width: 0;
-        padding: 10px;
-        border-radius: 9px;
-        background: var(--accent-pale);
-      }
-
-      .plan-metric strong, .plan-metric span { display: block; }
-      .plan-metric strong { margin-bottom: 2px; font-size: 14px; letter-spacing: -0.02em; }
-      .plan-metric span { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-
-      .task {
-        display: grid;
-        grid-template-columns: 26px 1fr auto;
-        gap: 10px;
-        align-items: center;
-        min-height: 54px;
-        border-top: 1px solid var(--line);
-      }
-
-      .task-mark {
-        display: grid;
-        width: 23px;
-        height: 23px;
-        place-items: center;
-        border: 1px solid var(--line);
-        border-radius: 50%;
-        color: var(--accent);
-        font-size: 10px;
-        font-weight: 750;
-      }
-
-      .task-mark.done { border-color: var(--positive-soft); background: var(--positive-soft); color: var(--positive); }
-      .task-name { display: block; margin-bottom: 2px; font-size: 13px; font-weight: 650; }
-      .task-reason { display: block; color: var(--soft-muted); font-size: 10px; }
-      .task time, .task-state { color: var(--muted); font-size: 11px; font-weight: 600; }
-      .task-state.moved { color: var(--accent); }
 
       .logic-band {
         border-top: 1px solid var(--line);
@@ -609,9 +470,8 @@
       .footer-links a:hover { color: #fff; }
 
       @media (max-width: 940px) {
-        .hero { grid-template-columns: 1fr; gap: 55px; min-height: auto; padding: 70px 0 82px; }
+        .hero { min-height: auto; padding: 70px 0 82px; }
         .hero-copy { max-width: 660px; }
-        .briefing { width: min(100%, 610px); }
         .logic-band-inner, .section-heading, .adapt-grid, .compare, .faq-grid, .waitlist-inner { grid-template-columns: 1fr; }
         .logic-band-inner { gap: 20px; }
         .context-list { justify-content: flex-start; }
@@ -634,15 +494,8 @@
         .hero { padding: 55px 0 67px; }
         h1 { font-size: clamp(42px, 13vw, 56px); }
         .hero-copy { font-size: 17px; }
-        .hero-actions { align-items: flex-start; flex-direction: column; gap: 4px; }
-        .hero-notes { display: grid; }
-        .briefing-head { padding: 20px 18px 16px; }
-        .scenario-switch { margin: 0 18px; }
-        .scenario-panel { padding: 0 18px 20px; }
-        .guidance p { font-size: 16px; }
-        .plan-metric { padding: 8px; }
-        .plan-metric strong { font-size: 12px; }
-        .task { grid-template-columns: 24px 1fr auto; gap: 8px; }
+        .hero-actions { align-items: center; flex-direction: column; gap: 4px; }
+        .hero-notes { flex-direction: column; }
         .logic-band-inner { padding: 28px 0; }
         .section { padding: 74px 0; }
         .section-heading { margin-bottom: 37px; }
@@ -687,7 +540,7 @@
 
     <main id="top">
       <section class="wrap hero" aria-labelledby="hero-title">
-        <div>
+        <div class="hero-content">
           <p class="eyebrow">Adaptive planning for students</p>
           <h1 id="hero-title">A plan that changes when your day does.</h1>
           <p class="hero-copy">
@@ -703,82 +556,6 @@
             <span class="hero-note">Plans reset without starting over</span>
           </div>
         </div>
-
-        <aside class="briefing" aria-label="Interactive example of an Arcadia daily plan">
-          <div class="briefing-head">
-            <div class="briefing-date"><span>Your plan</span><strong>Wednesday, 18 June</strong></div>
-            <div class="status-pill">Balanced</div>
-          </div>
-
-          <div class="scenario-switch" role="group" aria-label="Choose a plan scenario">
-            <button type="button" data-scenario="original" aria-pressed="true">Original plan</button>
-            <button type="button" data-scenario="delay" aria-pressed="false">Training +45m</button>
-          </div>
-
-          <div class="scenario-panel" data-panel="original">
-            <div class="guidance">
-              <div class="guidance-label">Arcadia briefing</div>
-              <p>Finish maths first, keep English short, then protect tonight’s sleep target.</p>
-            </div>
-            <div class="plan-metrics" aria-label="Plan summary">
-              <div class="plan-metric"><strong>55 min</strong><span>focused work</span></div>
-              <div class="plan-metric"><strong>3</strong><span>priorities</span></div>
-              <div class="plan-metric"><strong>10:45</strong><span>sleep target</span></div>
-            </div>
-            <div class="task">
-              <span class="task-mark">1</span>
-              <span><span class="task-name">Maths revision</span><span class="task-reason">Exam in 4 days</span></span>
-              <time>4:15 pm</time>
-            </div>
-            <div class="task">
-              <span class="task-mark">2</span>
-              <span><span class="task-name">Training</span><span class="task-reason">Fixed commitment</span></span>
-              <time>5:00 pm</time>
-            </div>
-            <div class="task">
-              <span class="task-mark">3</span>
-              <span><span class="task-name">English outline</span><span class="task-reason">Keeps Friday clear</span></span>
-              <time>7:15 pm</time>
-            </div>
-            <div class="task">
-              <span class="task-mark">4</span>
-              <span><span class="task-name">Sleep</span><span class="task-reason">Recovery protected</span></span>
-              <time>10:45 pm</time>
-            </div>
-          </div>
-
-          <div class="scenario-panel" data-panel="delay" hidden>
-            <div class="guidance">
-              <div class="guidance-label">Plan updated</div>
-              <p>Training ran late. English moves to Thursday; maths and sleep stay protected.</p>
-            </div>
-            <div class="plan-metrics" aria-label="Updated plan summary">
-              <div class="plan-metric"><strong>35 min</strong><span>focused work</span></div>
-              <div class="plan-metric"><strong>1 moved</strong><span>conflict resolved</span></div>
-              <div class="plan-metric"><strong>10:45</strong><span>sleep target</span></div>
-            </div>
-            <div class="task">
-              <span class="task-mark done">✓</span>
-              <span><span class="task-name">Maths revision</span><span class="task-reason">Completed before training</span></span>
-              <span class="task-state">Done</span>
-            </div>
-            <div class="task">
-              <span class="task-mark done">✓</span>
-              <span><span class="task-name">Training</span><span class="task-reason">Finished 45 min late</span></span>
-              <span class="task-state">Done</span>
-            </div>
-            <div class="task">
-              <span class="task-mark">→</span>
-              <span><span class="task-name">English outline</span><span class="task-reason">Thursday still has capacity</span></span>
-              <span class="task-state moved">Thu 4:30</span>
-            </div>
-            <div class="task">
-              <span class="task-mark">4</span>
-              <span><span class="task-name">Sleep</span><span class="task-reason">No work added tonight</span></span>
-              <span class="task-state">10:45 pm</span>
-            </div>
-          </div>
-        </aside>
       </section>
 
       <section class="logic-band" aria-labelledby="context-title">
@@ -1029,23 +806,6 @@
     </footer>
 
     <script>
-      const scenarioButtons = document.querySelectorAll('[data-scenario]');
-      const scenarioPanels = document.querySelectorAll('[data-panel]');
-
-      scenarioButtons.forEach((button) => {
-        button.addEventListener('click', () => {
-          const selectedScenario = button.dataset.scenario;
-
-          scenarioButtons.forEach((item) => {
-            item.setAttribute('aria-pressed', String(item === button));
-          });
-
-          scenarioPanels.forEach((panel) => {
-            panel.hidden = panel.dataset.panel !== selectedScenario;
-          });
-        });
-      });
-
       const form = document.querySelector('#waitlist-form');
       const email = document.querySelector('#email');
       const message = document.querySelector('#form-message');
