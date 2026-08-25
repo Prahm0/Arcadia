@@ -7,8 +7,7 @@ const state = {
   loading: false
 };
 
-const savedTheme = localStorage.getItem('arcadia-theme');
-const initialTheme = savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+const initialTheme = getPreferredTheme();
 document.documentElement.dataset.theme = initialTheme;
 
 const elements = {
@@ -50,7 +49,7 @@ function bindControls() {
   document.querySelector('#theme-toggle').addEventListener('click', () => {
     const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem('arcadia-theme', theme);
+    saveTheme(theme);
     updateThemeToggle();
   });
   document.querySelector('#rail-toggle').addEventListener('click', () => {
@@ -86,6 +85,18 @@ function bindControls() {
   const params = new URLSearchParams(location.search);
   if (params.get('google') === 'connected') { toast('Google Calendar connected.'); history.replaceState({}, '', '/'); }
   if (params.get('google') === 'denied') { toast('Google Calendar connection was cancelled.'); history.replaceState({}, '', '/'); }
+}
+
+function getPreferredTheme() {
+  try {
+    return localStorage.getItem('arcadia-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  } catch {
+    return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+}
+
+function saveTheme(theme) {
+  try { localStorage.setItem('arcadia-theme', theme); } catch {}
 }
 
 function updateThemeToggle() {
