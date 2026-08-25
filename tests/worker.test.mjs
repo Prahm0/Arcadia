@@ -62,15 +62,23 @@ test("links Arcadia branding to the canonical calendar dashboard", async () => {
   assert.equal((html.match(/href="\/#calendar" aria-label="Arcadia dashboard"/g) || []).length, 2);
   assert.match(html, /id="rail-toggle"[^>]*aria-label="Expand navigation"[^>]*aria-expanded="false"/);
   assert.doesNotMatch(html, /class="brand-mark"[^>]*>A</);
+  assert.equal((html.match(/src="\/arcadia-mark-transparent\.png"/g) || []).length, 2);
+  assert.match(html, /:root\[data-theme="dark"\] \.brand-mark/);
 });
 
 test("serves Arcadia brand and sharing images", async () => {
-  for (const path of ["/arcadia-logo.png", "/arcadia-mark.png", "/favicon.png", "/apple-touch-icon.png", "/og-v3.png"]) {
+  for (const path of ["/arcadia-logo.png", "/arcadia-mark.png", "/arcadia-mark-transparent.png", "/favicon.png", "/apple-touch-icon.png", "/og-v3.png"]) {
     const response = await worker.fetch(new Request(`https://arcadia.test${path}`), {}, {});
     assert.equal(response.status, 200, path);
     assert.equal(response.headers.get("content-type"), "image/png", path);
     assert.ok((await response.arrayBuffer()).byteLength > 100, path);
   }
+});
+
+test("serves the theme-aware Arcadia mark with transparency", async () => {
+  const response = await worker.fetch(new Request("https://arcadia.test/arcadia-mark-transparent.png"), {}, {});
+  const png = new Uint8Array(await response.arrayBuffer());
+  assert.equal(png[25], 6, "PNG should use RGBA color data");
 });
 
 test("redirects unauthenticated page requests to platform sign-in", async () => {

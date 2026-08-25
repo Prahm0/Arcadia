@@ -2,6 +2,7 @@ import dashboardHtml from "../dashboard.html?raw";
 import dashboardScript from "../dashboard.js?raw";
 import arcadiaLogo from "../arcadia-logo-original.png?inline";
 import arcadiaMark from "../arcadia-mark.png?inline";
+import arcadiaMarkTransparent from "../arcadia-mark-transparent.png?inline";
 import favicon from "../favicon.png?inline";
 import appleTouchIcon from "../apple-touch-icon.png?inline";
 import socialPreview from "../og-v3.png?inline";
@@ -26,6 +27,7 @@ const jsonHeaders = { "content-type": "application/json; charset=utf-8", "cache-
 const imageAssets = new Map([
   ["/arcadia-logo.png", arcadiaLogo],
   ["/arcadia-mark.png", arcadiaMark],
+  ["/arcadia-mark-transparent.png", arcadiaMarkTransparent],
   ["/favicon.png", favicon],
   ["/apple-touch-icon.png", appleTouchIcon],
   ["/og.png", socialPreview],

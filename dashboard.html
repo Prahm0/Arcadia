@@ -108,7 +108,7 @@
       .rail-brand { width: 100%; display: grid; grid-template-columns: 42px; justify-content: center; gap: 8px; }
       .brand-mark {
         width: 42px; height: 42px; display: block; overflow: hidden;
-        border-radius: 13px; background: #060711; box-shadow: 0 7px 18px rgba(35, 26, 81, .18);
+        border-radius: 13px; background: #fff; box-shadow: 0 7px 18px rgba(35, 26, 81, .14);
       }
       .brand-mark img { width: 100%; height: 100%; display: block; object-fit: cover; }
       .brand-name { display: none; min-width: 0; font-size: 15px; font-weight: 760; letter-spacing: -.03em; }
@@ -146,8 +146,10 @@
       .workspace { min-width: 0; padding: clamp(22px, 3vw, 42px); }
       .topbar { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 28px; }
       .topbar-heading { min-width: 0; display: flex; align-items: center; gap: 12px; }
-      .mobile-brand-mark { width: 40px; height: 40px; display: none; flex: 0 0 auto; overflow: hidden; border-radius: 12px; background: #060711; box-shadow: 0 7px 18px rgba(35, 26, 81, .16); }
+      .mobile-brand-mark { width: 40px; height: 40px; display: none; flex: 0 0 auto; overflow: hidden; border-radius: 12px; background: #fff; box-shadow: 0 7px 18px rgba(35, 26, 81, .14); }
       .mobile-brand-mark img { width: 100%; height: 100%; display: block; object-fit: cover; }
+      :root[data-theme="dark"] .brand-mark,
+      :root[data-theme="dark"] .mobile-brand-mark { background: transparent; box-shadow: none; }
       .eyebrow { margin: 0 0 7px; color: var(--accent); font-size: 12px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
       h1 { margin: 0; font-size: clamp(29px, 3vw, 42px); line-height: 1; letter-spacing: -.055em; font-weight: 680; }
       .top-actions { display: flex; align-items: center; gap: 10px; }
@@ -369,7 +371,7 @@
     <div class="app-shell">
       <aside class="rail" aria-label="Arcadia navigation">
         <div class="rail-brand">
-          <a class="brand-mark" href="/#calendar" aria-label="Arcadia dashboard"><img src="/arcadia-mark.png" alt="" /></a>
+          <a class="brand-mark" href="/#calendar" aria-label="Arcadia dashboard"><img src="/arcadia-mark-transparent.png" alt="" /></a>
           <span class="brand-name" aria-hidden="true">Arcadia</span>
           <button class="rail-toggle" id="rail-toggle" type="button" aria-label="Expand navigation" aria-expanded="false"><span aria-hidden="true">›</span></button>
         </div>
@@ -387,7 +389,7 @@
       <main class="workspace" id="top">
         <header class="topbar">
           <div class="topbar-heading">
-            <a class="mobile-brand-mark" href="/#calendar" aria-label="Arcadia dashboard"><img src="/arcadia-mark.png" alt="" /></a>
+            <a class="mobile-brand-mark" href="/#calendar" aria-label="Arcadia dashboard"><img src="/arcadia-mark-transparent.png" alt="" /></a>
             <div>
               <p class="eyebrow" id="today-label">Loading your week…</p>
               <h1 id="greeting">Your week, in balance.</h1>
