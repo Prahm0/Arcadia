@@ -6,9 +6,14 @@
     <meta name="description" content="Arcadia brings your week, workload, and planning assistant into one calm dashboard." />
     <meta property="og:title" content="Dashboard | Arcadia" />
     <meta property="og:description" content="A private, capacity-aware student planning dashboard." />
-    <meta property="og:image" content="https://arcadia-student-planner.abtinfeizollahi67.chatgpt.site/og-v2.png" />
+    <meta property="og:image" content="https://arcadia-student-planner.abtinfeizollahi67.chatgpt.site/og-v3.png" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Dashboard | Arcadia" />
+    <meta name="twitter:description" content="A private, capacity-aware student planning dashboard." />
+    <meta name="twitter:image" content="https://arcadia-student-planner.abtinfeizollahi67.chatgpt.site/og-v3.png" />
     <meta name="theme-color" content="#f4f5f9" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <title>Dashboard | Arcadia</title>
     <script>
       try {
@@ -100,12 +105,20 @@
         display: flex; flex-direction: column; align-items: center;
         padding: 22px 12px 18px; color: var(--ink); background: var(--rail); border-right: 1px solid var(--line); box-shadow: var(--shadow-low);
       }
+      .rail-brand { width: 100%; display: grid; grid-template-columns: 42px; justify-content: center; gap: 8px; }
       .brand-mark {
-        width: 42px; height: 42px; display: grid; place-items: center;
-        border: 0; border-radius: 14px; background: var(--accent); color: var(--on-accent);
-        font-size: 20px; font-weight: 760; letter-spacing: -.06em;
+        width: 42px; height: 42px; display: block; overflow: hidden;
+        border-radius: 13px; background: #060711; box-shadow: 0 7px 18px rgba(35, 26, 81, .18);
       }
-      .rail-nav { display: grid; gap: 10px; margin-top: 48px; }
+      .brand-mark img { width: 100%; height: 100%; display: block; object-fit: cover; }
+      .brand-name { display: none; min-width: 0; font-size: 15px; font-weight: 760; letter-spacing: -.03em; }
+      .rail-toggle {
+        width: 28px; height: 28px; display: grid; place-items: center; justify-self: center;
+        border: 1px solid var(--line); border-radius: 9px; cursor: pointer; background: var(--control); color: var(--muted);
+      }
+      .rail-toggle:hover { color: var(--accent-dark); border-color: var(--accent); }
+      .rail-toggle span { display: block; transition: transform 180ms ease; }
+      .rail-nav { display: grid; gap: 10px; margin-top: 30px; }
       .rail-button {
         width: 44px; height: 44px; display: grid; place-items: center; position: relative;
         border: 0; border-radius: 13px; cursor: pointer; background: transparent; color: var(--muted);
@@ -123,12 +136,18 @@
       .rail-label { display: none; white-space: nowrap; font-size: 12px; font-weight: 650; }
       .app-shell.rail-open { grid-template-columns: 210px minmax(0, 1fr); }
       .app-shell.rail-open .rail { align-items: stretch; }
-      .app-shell.rail-open .brand-mark, .app-shell.rail-open .avatar { align-self: center; }
+      .app-shell.rail-open .rail-brand { grid-template-columns: 42px minmax(0, 1fr) 28px; align-items: center; justify-content: stretch; }
+      .app-shell.rail-open .brand-name { display: block; }
+      .app-shell.rail-open .rail-toggle span { transform: rotate(180deg); }
+      .app-shell.rail-open .avatar { align-self: center; }
       .app-shell.rail-open .rail-button { width: 100%; display: flex; justify-content: flex-start; gap: 12px; padding: 0 13px; }
       .app-shell.rail-open .rail-label { display: inline; }
 
       .workspace { min-width: 0; padding: clamp(22px, 3vw, 42px); }
       .topbar { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 28px; }
+      .topbar-heading { min-width: 0; display: flex; align-items: center; gap: 12px; }
+      .mobile-brand-mark { width: 40px; height: 40px; display: none; flex: 0 0 auto; overflow: hidden; border-radius: 12px; background: #060711; box-shadow: 0 7px 18px rgba(35, 26, 81, .16); }
+      .mobile-brand-mark img { width: 100%; height: 100%; display: block; object-fit: cover; }
       .eyebrow { margin: 0 0 7px; color: var(--accent); font-size: 12px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
       h1 { margin: 0; font-size: clamp(29px, 3vw, 42px); line-height: 1; letter-spacing: -.055em; font-weight: 680; }
       .top-actions { display: flex; align-items: center; gap: 10px; }
@@ -315,7 +334,7 @@
       @media (max-width: 700px) {
         .app-shell { grid-template-columns: 1fr; padding-bottom: 66px; }
         .rail { position: fixed; inset: auto 0 0; width: 100%; height: 66px; flex-direction: row; justify-content: space-around; padding: 8px 14px; }
-        .brand-mark, .rail-spacer, .avatar { display: none; }
+        .rail-brand, .rail-spacer, .avatar { display: none; }
         .rail-nav { width: 100%; grid-template-columns: repeat(5, 1fr); margin: 0; }
         .rail-button { margin: auto; }
         .rail-button.active::before { left: 50%; top: -8px; width: 20px; height: 3px; transform: translateX(-50%); border-radius: 0 0 4px 4px; }
@@ -323,6 +342,7 @@
         .app-shell.rail-open { grid-template-columns: 1fr; }
         .workspace { padding: 20px 14px; }
         .topbar { align-items: flex-start; }
+        .mobile-brand-mark { display: block; }
         .status-pill { display: none; }
         #add-event-button { width: 42px; padding: 0; font-size: 0; }
         #add-event-button::after { content: "+"; font-size: 20px; }
@@ -348,7 +368,11 @@
   <body>
     <div class="app-shell">
       <aside class="rail" aria-label="Arcadia navigation">
-        <button class="brand-mark" id="rail-toggle" type="button" aria-label="Expand navigation" aria-expanded="false">A</button>
+        <div class="rail-brand">
+          <a class="brand-mark" href="/#calendar" aria-label="Arcadia dashboard"><img src="/arcadia-mark.png" alt="" /></a>
+          <span class="brand-name" aria-hidden="true">Arcadia</span>
+          <button class="rail-toggle" id="rail-toggle" type="button" aria-label="Expand navigation" aria-expanded="false"><span aria-hidden="true">›</span></button>
+        </div>
         <nav class="rail-nav" aria-label="Primary">
           <button class="rail-button active" type="button" data-view="dashboard" aria-label="Dashboard" aria-current="page"><span class="rail-icon">⌂</span><span class="rail-label">Dashboard</span></button>
           <button class="rail-button" type="button" data-view="calendar" aria-label="Calendar"><span class="rail-icon">□</span><span class="rail-label">Calendar</span></button>
@@ -362,9 +386,12 @@
 
       <main class="workspace" id="top">
         <header class="topbar">
-          <div>
-            <p class="eyebrow" id="today-label">Loading your week…</p>
-            <h1 id="greeting">Your week, in balance.</h1>
+          <div class="topbar-heading">
+            <a class="mobile-brand-mark" href="/#calendar" aria-label="Arcadia dashboard"><img src="/arcadia-mark.png" alt="" /></a>
+            <div>
+              <p class="eyebrow" id="today-label">Loading your week…</p>
+              <h1 id="greeting">Your week, in balance.</h1>
+            </div>
           </div>
           <div class="top-actions">
             <button class="icon-button" id="theme-toggle" type="button" aria-label="Use dark mode" aria-pressed="false">◐</button>

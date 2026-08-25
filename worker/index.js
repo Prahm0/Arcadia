@@ -1,6 +1,10 @@
 import dashboardHtml from "../dashboard.html?raw";
 import dashboardScript from "../dashboard.js?raw";
-import socialPreview from "../og-v2.png?inline";
+import arcadiaLogo from "../arcadia-logo-original.png?inline";
+import arcadiaMark from "../arcadia-mark.png?inline";
+import favicon from "../favicon.png?inline";
+import appleTouchIcon from "../apple-touch-icon.png?inline";
+import socialPreview from "../og-v3.png?inline";
 import {
   completeEvent, createEvent, deleteEvent, ensureDatabase, getAnalytics, getEvent, listEvents,
   listMessages, listPendingProposals, requireUser, updateEvent, upsertProfile, weekRange
@@ -19,6 +23,15 @@ const htmlHeaders = {
   "x-content-type-options": "nosniff"
 };
 const jsonHeaders = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
+const imageAssets = new Map([
+  ["/arcadia-logo.png", arcadiaLogo],
+  ["/arcadia-mark.png", arcadiaMark],
+  ["/favicon.png", favicon],
+  ["/apple-touch-icon.png", appleTouchIcon],
+  ["/og.png", socialPreview],
+  ["/og-v2.png", socialPreview],
+  ["/og-v3.png", socialPreview]
+]);
 
 export default {
   async fetch(request, env, context) {
@@ -29,9 +42,8 @@ export default {
     }
     if (url.pathname === "/dashboard") return Response.redirect(`${url.origin}/`, 308);
     if (url.pathname === "/dashboard.js") return new Response(dashboardScript, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "private, no-store" } });
-    if (url.pathname === "/og.png" || url.pathname === "/og-v2.png") {
-      return new Response(decodeDataUrl(socialPreview), { headers: { "cache-control": "public, max-age=31536000, immutable", "content-type": "image/png" } });
-    }
+    const imageAsset = imageAssets.get(url.pathname);
+    if (imageAsset) return new Response(decodeDataUrl(imageAsset), { headers: { "cache-control": "public, max-age=31536000, immutable", "content-type": "image/png" } });
     if (!url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
 
     const user = requireUser(request);

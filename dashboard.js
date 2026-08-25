@@ -72,7 +72,9 @@ function bindControls() {
   });
   document.querySelector('#rail-toggle').addEventListener('click', () => {
     const open = elements.shell.classList.toggle('rail-open');
-    document.querySelector('#rail-toggle').setAttribute('aria-expanded', String(open));
+    const toggle = document.querySelector('#rail-toggle');
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', open ? 'Collapse navigation' : 'Expand navigation');
   });
   elements.viewButtons.forEach((button) => button.addEventListener('click', () => {
     const hash = `#${button.dataset.view}`;

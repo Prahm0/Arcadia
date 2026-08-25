@@ -56,6 +56,23 @@ test("defaults client navigation to the Dashboard hash", async () => {
   assert.match(script, /#dashboard/);
 });
 
+test("links Arcadia branding to the canonical calendar dashboard", async () => {
+  const response = await worker.fetch(new Request("https://arcadia.test/", { headers: { "oai-authenticated-user-id": "owner", "oai-authenticated-user-email": "owner@example.com" } }), {}, {});
+  const html = await response.text();
+  assert.equal((html.match(/href="\/#calendar" aria-label="Arcadia dashboard"/g) || []).length, 2);
+  assert.match(html, /id="rail-toggle"[^>]*aria-label="Expand navigation"[^>]*aria-expanded="false"/);
+  assert.doesNotMatch(html, /class="brand-mark"[^>]*>A</);
+});
+
+test("serves Arcadia brand and sharing images", async () => {
+  for (const path of ["/arcadia-logo.png", "/arcadia-mark.png", "/favicon.png", "/apple-touch-icon.png", "/og-v3.png"]) {
+    const response = await worker.fetch(new Request(`https://arcadia.test${path}`), {}, {});
+    assert.equal(response.status, 200, path);
+    assert.equal(response.headers.get("content-type"), "image/png", path);
+    assert.ok((await response.arrayBuffer()).byteLength > 100, path);
+  }
+});
+
 test("redirects unauthenticated page requests to platform sign-in", async () => {
   const response = await worker.fetch(new Request("https://arcadia.test/"), {}, {});
   assert.equal(response.status, 302);
