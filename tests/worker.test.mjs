@@ -43,6 +43,10 @@ test("serves Dashboard first with three hash-addressable widget previews", async
   assert.match(html, /data-preview-view="calendar"/);
   assert.match(html, /data-preview-view="weekly-pulse"/);
   assert.match(html, /data-preview-view="assistant"/);
+  assert.match(html, /<article class="preview-card calendar-preview-card">/);
+  assert.match(html, /class="preview-title-link" href="#calendar"/);
+  assert.match(html, /id="dashboard-week-strip"/);
+  assert.match(html, /id="dashboard-composer"/);
   assert.match(html, /data-widget-view="calendar"[^>]*hidden/);
   assert.match(html, /data-widget-view="weekly-pulse"[^>]*hidden/);
   assert.match(html, /data-widget-view="assistant"[^>]*hidden/);
