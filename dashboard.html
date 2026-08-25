@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Arcadia brings your week, workload, and planning assistant into one calm dashboard." />
+    <meta property="og:title" content="Dashboard | Arcadia" />
+    <meta property="og:description" content="A private, capacity-aware student planning dashboard." />
+    <meta property="og:image" content="https://arcadia-student-planner.abtinfeizollahi67.chatgpt.site/og-v2.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#f4f4f1" />
+    <title>Dashboard | Arcadia</title>
+    <style>
+      :root {
+        --ink: #171719;
+        --muted: #73737a;
+        --line: #dededa;
+        --canvas: #f4f4f1;
+        --panel: #fff;
+        --accent: #4a4b98;
+        --accent-dark: #373876;
+        --accent-soft: #ececf8;
+        --green: #3f775e;
+        --green-soft: #e9f3ed;
+        --amber: #9a6c2b;
+        --amber-soft: #f7efe2;
+        --shadow: 0 18px 55px rgba(23, 23, 25, 0.07);
+      }
+
+      * { box-sizing: border-box; }
+      html { color-scheme: light; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--canvas);
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      button, input { font: inherit; }
+      button { color: inherit; }
+      button, a { -webkit-tap-highlight-color: transparent; }
+      a { color: inherit; text-decoration: none; }
+      :focus-visible { outline: 3px solid rgba(74, 75, 152, .28); outline-offset: 3px; }
+
+      .app-shell { min-height: 100vh; display: grid; grid-template-columns: 76px minmax(0, 1fr); }
+      .rail {
+        position: sticky; top: 0; height: 100vh; z-index: 5;
+        display: flex; flex-direction: column; align-items: center;
+        padding: 22px 12px 18px; color: #fff; background: var(--ink);
+      }
+      .brand-mark {
+        width: 42px; height: 42px; display: grid; place-items: center;
+        border: 1px solid rgba(255,255,255,.18); border-radius: 14px;
+        font-size: 20px; font-weight: 760; letter-spacing: -.06em;
+      }
+      .rail-nav { display: grid; gap: 10px; margin-top: 48px; }
+      .rail-button {
+        width: 44px; height: 44px; display: grid; place-items: center; position: relative;
+        border: 0; border-radius: 13px; cursor: pointer; background: transparent; color: #9999a0;
+      }
+      .rail-button:hover, .rail-button.active { color: #fff; background: rgba(255,255,255,.1); }
+      .rail-button.active::before {
+        position: absolute; left: -12px; width: 3px; height: 20px; border-radius: 0 4px 4px 0;
+        background: #8889df; content: "";
+      }
+      .rail-icon { width: 20px; height: 20px; display: grid; place-items: center; font-size: 17px; }
+      .rail-spacer { flex: 1; }
+      .avatar { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; background: #6263ad; font-size: 12px; font-weight: 720; }
+      .rail-label { display: none; white-space: nowrap; font-size: 12px; font-weight: 650; }
+      .app-shell.rail-open { grid-template-columns: 210px minmax(0, 1fr); }
+      .app-shell.rail-open .rail { align-items: stretch; }
+      .app-shell.rail-open .brand-mark, .app-shell.rail-open .avatar { align-self: center; }
+      .app-shell.rail-open .rail-button { width: 100%; display: flex; justify-content: flex-start; gap: 12px; padding: 0 13px; }
+      .app-shell.rail-open .rail-label { display: inline; }
+
+      .workspace { min-width: 0; padding: clamp(22px, 3vw, 42px); }
+      .topbar { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 28px; }
+      .eyebrow { margin: 0 0 7px; color: var(--accent); font-size: 12px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+      h1 { margin: 0; font-size: clamp(29px, 3vw, 42px); line-height: 1; letter-spacing: -.055em; font-weight: 680; }
+      .top-actions { display: flex; align-items: center; gap: 10px; }
+      .status-pill, .button {
+        min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff;
+        font-size: 13px; font-weight: 650;
+      }
+      .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 4px var(--amber-soft); }
+      .button { cursor: pointer; }
+      .button:hover { border-color: #c6c6c2; }
+      .button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+      .button.primary:hover { background: var(--accent-dark); }
+
+      .dashboard-grid {
+        display: grid; grid-template-columns: minmax(520px, .92fr) minmax(420px, 1.08fr);
+        grid-template-rows: minmax(230px, .72fr) minmax(410px, 1.28fr); gap: 18px;
+        min-height: calc(100vh - 139px);
+      }
+      .panel { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: var(--panel); box-shadow: var(--shadow); }
+      .calendar-panel { grid-row: 1 / span 2; display: flex; flex-direction: column; }
+      .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 22px 24px 18px; border-bottom: 1px solid #ecece8; }
+      .panel-title { margin: 0; font-size: 17px; letter-spacing: -.025em; }
+      .panel-subtitle { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+      .panel-actions { display: flex; gap: 7px; }
+      .icon-button { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; background: #fff; }
+      .icon-button:hover { background: #f6f6f3; }
+
+      .week-strip { display: grid; grid-template-columns: repeat(7, 1fr); padding: 15px 16px 13px; border-bottom: 1px solid #ecece8; }
+      .day { min-width: 0; padding: 5px 3px; border: 0; border-radius: 12px; cursor: pointer; background: transparent; text-align: center; }
+      .day:hover { background: #f7f7f4; }
+      .day span { display: block; margin-bottom: 7px; color: var(--muted); font-size: 10px; font-weight: 720; text-transform: uppercase; }
+      .day strong { width: 32px; height: 32px; display: grid; place-items: center; margin: auto; border-radius: 10px; font-size: 13px; }
+      .day.active strong { background: var(--accent); color: #fff; }
+
+      .agenda { flex: 1; min-height: 0; overflow: auto; padding: 10px 18px 22px; }
+      .agenda-label { display: flex; align-items: center; gap: 10px; margin: 14px 2px 9px; color: var(--muted); font-size: 11px; font-weight: 720; text-transform: uppercase; letter-spacing: .05em; }
+      .agenda-label::after { height: 1px; flex: 1; background: #ecece8; content: ""; }
+      .event { display: grid; grid-template-columns: 52px 5px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 4px; border-bottom: 1px solid #f0f0ed; }
+      button.event { width: 100%; border: 0; text-align: left; cursor: pointer; background: transparent; }
+      button.event:hover { background: #fafaf8; }
+      .event.completed .event-copy strong { color: var(--muted); text-decoration: line-through; }
+      .event-time { color: var(--muted); font-size: 11px; }
+      .event-bar { width: 5px; height: 42px; border-radius: 5px; background: var(--accent); }
+      .event.training .event-bar { background: var(--green); }
+      .event.google .event-bar { background: #b8b8bc; }
+      .event-copy strong { display: block; margin-bottom: 4px; font-size: 13px; }
+      .event-copy span { color: var(--muted); font-size: 11px; }
+      .event-badge { padding: 5px 8px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-dark); font-size: 9px; font-weight: 720; }
+      .event.training .event-badge { color: var(--green); background: var(--green-soft); }
+      .event.google .event-badge { color: #696970; background: #f0f0f0; }
+
+      .analytics-panel { display: flex; flex-direction: column; }
+      .analytics-body { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; flex: 1; background: #ecece8; }
+      .metric { min-width: 0; padding: 22px; background: #fff; }
+      .metric-label { color: var(--muted); font-size: 11px; font-weight: 660; }
+      .metric-value { display: block; margin: 16px 0 7px; font-size: clamp(26px, 2.2vw, 38px); line-height: 1; letter-spacing: -.055em; }
+      .metric-note { color: var(--green); font-size: 10px; font-weight: 680; }
+      .mini-bars { height: 44px; display: flex; align-items: end; gap: 5px; margin-top: 15px; }
+      .mini-bars span { flex: 1; min-width: 4px; border-radius: 4px 4px 1px 1px; background: #d9d9e9; }
+      .mini-bars span:nth-child(4), .mini-bars span:nth-child(5) { background: #7778bd; }
+      .ring { width: 52px; height: 52px; margin-top: 13px; border-radius: 50%; background: conic-gradient(var(--accent) 0 72%, #e8e8e5 72%); position: relative; }
+      .ring::after { position: absolute; inset: 7px; border-radius: inherit; background: #fff; content: ""; }
+
+      .chat-panel { display: flex; flex-direction: column; }
+      .assistant-state { display: inline-flex; align-items: center; gap: 7px; color: var(--green); font-size: 10px; font-weight: 700; }
+      .assistant-state::before { width: 6px; height: 6px; border-radius: 50%; background: currentColor; content: ""; }
+      .messages { flex: 1; min-height: 180px; overflow: auto; padding: 20px 22px 12px; }
+      .message { max-width: 86%; margin-bottom: 13px; padding: 12px 14px; border-radius: 14px; font-size: 12px; line-height: 1.5; }
+      .message.assistant { border: 1px solid #e7e7e3; border-top-left-radius: 4px; background: #f8f8f6; }
+      .message.user { margin-left: auto; border-bottom-right-radius: 4px; background: var(--accent); color: #fff; }
+      .proposal { max-width: 92%; margin: 0 22px 13px; padding: 13px; border: 1px solid #dcdced; border-radius: 14px; background: #f8f8fd; }
+      .proposal-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+      .proposal strong { font-size: 11px; }
+      .proposal p { margin: 7px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+      .proposal-chip { padding: 5px 7px; border-radius: 7px; color: var(--accent); background: var(--accent-soft); font-size: 9px; font-weight: 720; }
+      .suggestions { display: flex; gap: 7px; overflow-x: auto; padding: 0 22px 12px; scrollbar-width: none; }
+      .suggestion { flex: 0 0 auto; padding: 8px 10px; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; background: #fff; color: var(--muted); font-size: 10px; }
+      .composer { display: grid; grid-template-columns: minmax(0, 1fr) 38px; gap: 8px; padding: 13px; border-top: 1px solid #ecece8; }
+      .composer input { min-width: 0; height: 40px; padding: 0 13px; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: #fbfbf9; font-size: 12px; }
+      .composer input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(74,75,152,.1); }
+      .send { width: 38px; height: 40px; border: 0; border-radius: 11px; cursor: pointer; color: #fff; background: var(--accent); }
+      .send:disabled { cursor: wait; opacity: .55; }
+      .proposal-actions { display: flex; gap: 7px; margin-top: 11px; }
+      .proposal-actions .button { min-height: 32px; padding-inline: 11px; font-size: 10px; }
+      .empty-state { padding: 44px 22px; color: var(--muted); text-align: center; font-size: 12px; line-height: 1.55; }
+      .empty-state strong { display: block; margin-bottom: 6px; color: var(--ink); font-size: 14px; }
+
+      dialog { width: min(520px, calc(100% - 28px)); padding: 0; border: 0; border-radius: 20px; color: var(--ink); background: #fff; box-shadow: 0 30px 100px rgba(23,23,25,.25); }
+      dialog::backdrop { background: rgba(23,23,25,.42); backdrop-filter: blur(5px); }
+      .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 21px 22px; border-bottom: 1px solid var(--line); }
+      .modal-head h2 { margin: 0; font-size: 18px; letter-spacing: -.03em; }
+      .close-button { width: 34px; height: 34px; border: 0; border-radius: 10px; cursor: pointer; background: #f3f3f0; }
+      .event-form, .settings-body { padding: 22px; }
+      .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .field { display: grid; gap: 6px; }
+      .field.wide { grid-column: 1 / -1; }
+      .field label { color: var(--muted); font-size: 10px; font-weight: 700; }
+      .field input, .field select, .field textarea { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: #fbfbf9; color: var(--ink); font: inherit; font-size: 12px; }
+      .field textarea { min-height: 75px; resize: vertical; }
+      .form-error { min-height: 18px; margin: 12px 0 0; color: #a33f3f; font-size: 11px; }
+      .modal-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 4px; padding-top: 16px; border-top: 1px solid #ecece8; }
+      .button.danger { border-color: #eed4d4; color: #9a3535; background: #fff8f8; }
+      .connection-card { padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: #fafaf8; }
+      .connection-card strong { display: block; margin-bottom: 6px; font-size: 13px; }
+      .connection-card p { margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+      .toast { position: fixed; right: 22px; bottom: 22px; z-index: 20; max-width: 360px; padding: 13px 15px; border-radius: 12px; color: #fff; background: var(--ink); box-shadow: var(--shadow); font-size: 12px; transform: translateY(20px); opacity: 0; pointer-events: none; transition: 180ms ease; }
+      .toast.visible { transform: translateY(0); opacity: 1; }
+      .loading .dashboard-grid { opacity: .58; pointer-events: none; }
+
+      @media (max-width: 1080px) {
+        .dashboard-grid { grid-template-columns: 1fr; grid-template-rows: auto; }
+        .calendar-panel { grid-row: auto; min-height: 600px; }
+        .analytics-panel { min-height: 260px; }
+        .chat-panel { min-height: 480px; }
+      }
+      @media (max-width: 700px) {
+        .app-shell { grid-template-columns: 1fr; padding-bottom: 66px; }
+        .rail { position: fixed; inset: auto 0 0; width: 100%; height: 66px; flex-direction: row; justify-content: space-around; padding: 8px 14px; }
+        .brand-mark, .rail-spacer, .avatar { display: none; }
+        .rail-nav { width: 100%; grid-template-columns: repeat(4, 1fr); margin: 0; }
+        .rail-button { margin: auto; }
+        .rail-button.active::before { left: 50%; top: -8px; width: 20px; height: 3px; transform: translateX(-50%); border-radius: 0 0 4px 4px; }
+        .rail-label, .app-shell.rail-open .rail-label { display: none; }
+        .app-shell.rail-open { grid-template-columns: 1fr; }
+        .workspace { padding: 20px 14px; }
+        .topbar { align-items: flex-start; }
+        .status-pill { display: none; }
+        .button.primary { padding: 0 11px; font-size: 0; }
+        .button.primary::after { content: "+"; font-size: 20px; }
+        .panel { border-radius: 17px; box-shadow: 0 10px 35px rgba(23,23,25,.05); }
+        .panel-head { padding: 18px; }
+        .week-strip { padding-inline: 8px; }
+        .day strong { width: 29px; height: 29px; }
+        .agenda { padding-inline: 13px; }
+        .event { grid-template-columns: 42px 4px minmax(0,1fr); gap: 9px; }
+        .event-badge { display: none; }
+        .analytics-body { grid-template-columns: 1fr; }
+        .metric { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 5px 14px; }
+        .metric-value { grid-row: 1 / span 2; grid-column: 2; margin: 0; }
+        .mini-bars, .ring { display: none; }
+      }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="rail" aria-label="Arcadia navigation">
+        <button class="brand-mark" id="rail-toggle" type="button" aria-label="Expand navigation" aria-expanded="false">A</button>
+        <nav class="rail-nav" aria-label="Primary">
+          <button class="rail-button active" type="button" data-target="top" aria-label="Dashboard" aria-current="page"><span class="rail-icon">⌂</span><span class="rail-label">Dashboard</span></button>
+          <button class="rail-button" type="button" data-target="calendar" aria-label="Calendar"><span class="rail-icon">□</span><span class="rail-label">Calendar</span></button>
+          <button class="rail-button" type="button" data-target="analytics" aria-label="Analytics"><span class="rail-icon">↗</span><span class="rail-label">Analytics</span></button>
+          <button class="rail-button" id="settings-button" type="button" aria-label="Settings"><span class="rail-icon">⚙</span><span class="rail-label">Settings</span></button>
+        </nav>
+        <div class="rail-spacer"></div>
+        <div class="avatar" id="avatar" aria-label="Signed in">A</div>
+      </aside>
+
+      <main class="workspace" id="top">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="today-label">Loading your week…</p>
+            <h1 id="greeting">Your week, in balance.</h1>
+          </div>
+          <div class="top-actions">
+            <button class="status-pill" id="google-status" type="button"><span class="status-dot"></span><span>Google Calendar</span></button>
+            <button class="button primary" id="add-event-button" type="button">Add to plan</button>
+          </div>
+        </header>
+
+        <section class="dashboard-grid" aria-label="Dashboard overview">
+          <article class="panel calendar-panel" id="calendar" aria-labelledby="calendar-title">
+            <header class="panel-head">
+              <div><h2 class="panel-title" id="calendar-title">Calendar</h2><p class="panel-subtitle" id="week-summary">Loading calendar…</p></div>
+              <div class="panel-actions"><button class="icon-button" id="previous-week" type="button" aria-label="Previous week">←</button><button class="icon-button" id="next-week" type="button" aria-label="Next week">→</button></div>
+            </header>
+            <div class="week-strip" id="week-strip" role="group" aria-label="Choose a day">
+              <button class="day" type="button"><span>Mon</span><strong>24</strong></button>
+              <button class="day active" type="button" aria-pressed="true"><span>Tue</span><strong>25</strong></button>
+              <button class="day" type="button"><span>Wed</span><strong>26</strong></button>
+              <button class="day" type="button"><span>Thu</span><strong>27</strong></button>
+              <button class="day" type="button"><span>Fri</span><strong>28</strong></button>
+              <button class="day" type="button"><span>Sat</span><strong>29</strong></button>
+              <button class="day" type="button"><span>Sun</span><strong>30</strong></button>
+            </div>
+            <div class="agenda" id="agenda">
+              <div class="agenda-label">Morning</div>
+              <div class="event google"><span class="event-time">9:00</span><span class="event-bar"></span><div class="event-copy"><strong>Economics lecture</strong><span>Building 80 · 1h</span></div><span class="event-badge">Google</span></div>
+              <div class="event"><span class="event-time">10:30</span><span class="event-bar"></span><div class="event-copy"><strong>Calculus problem set</strong><span>Library · 50m focus block</span></div><span class="event-badge">Study</span></div>
+              <div class="agenda-label">Afternoon</div>
+              <div class="event google"><span class="event-time">1:00</span><span class="event-bar"></span><div class="event-copy"><strong>Group project check-in</strong><span>Online · 30m</span></div><span class="event-badge">Google</span></div>
+              <div class="event training"><span class="event-time">4:30</span><span class="event-bar"></span><div class="event-copy"><strong>Easy run</strong><span>Recovery pace · 45m</span></div><span class="event-badge">Training</span></div>
+              <div class="agenda-label">Evening</div>
+              <div class="event"><span class="event-time">7:00</span><span class="event-bar"></span><div class="event-copy"><strong>Review economics notes</strong><span>Home · 35m focus block</span></div><span class="event-badge">Study</span></div>
+            </div>
+          </article>
+
+          <article class="panel analytics-panel" id="analytics" aria-labelledby="analytics-title">
+            <header class="panel-head"><div><h2 class="panel-title" id="analytics-title">Weekly pulse</h2><p class="panel-subtitle">Compared with last week</p></div><button class="icon-button" type="button" aria-label="Open analytics">↗</button></header>
+            <div class="analytics-body" id="analytics-body">
+              <div class="metric"><span class="metric-label">Focused time</span><strong class="metric-value">6h 40</strong><span class="metric-note">↑ 48 min</span><div class="mini-bars" aria-hidden="true"><span style="height:34%"></span><span style="height:55%"></span><span style="height:44%"></span><span style="height:76%"></span><span style="height:92%"></span></div></div>
+              <div class="metric"><span class="metric-label">Completion</span><strong class="metric-value">72%</strong><span class="metric-note">9 of 12 blocks</span><div class="ring" role="img" aria-label="72 percent complete"></div></div>
+              <div class="metric"><span class="metric-label">Capacity</span><strong class="metric-value">Good</strong><span class="metric-note">3h 20m open</span><div class="mini-bars" aria-hidden="true"><span style="height:80%"></span><span style="height:55%"></span><span style="height:63%"></span><span style="height:38%"></span><span style="height:28%"></span></div></div>
+            </div>
+          </article>
+
+          <article class="panel chat-panel" aria-labelledby="assistant-title">
+            <header class="panel-head"><div><h2 class="panel-title" id="assistant-title">Arcadia assistant</h2><p class="panel-subtitle">Plan with your real capacity</p></div><span class="assistant-state">Ready</span></header>
+            <div class="messages" id="messages" aria-live="polite">
+              <div class="message assistant">You have a clear 90-minute window after lunch tomorrow. Want me to use it for the economics draft, or protect it as recovery time?</div>
+              <div class="message user">Move the draft forward, but keep tonight light.</div>
+            </div>
+            <div id="proposals"><div class="proposal">
+              <div class="proposal-top"><strong>Suggested schedule change</strong><span class="proposal-chip">Needs approval</span></div>
+              <p>Wednesday, 2:00–3:15 pm · Economics draft<br />Tonight remains unchanged.</p>
+            </div></div>
+            <div class="suggestions"><button class="suggestion" type="button" data-prompt="What should I do next?">What should I do next?</button><button class="suggestion" type="button" data-prompt="Rebalance my week without changing Google events.">Rebalance my week</button><button class="suggestion" type="button" data-prompt="Protect my sleep and keep tonight light.">Protect my sleep</button></div>
+            <form class="composer" id="composer"><label for="chat-input" style="position:absolute;left:-9999px">Message Arcadia</label><input id="chat-input" placeholder="Ask Arcadia to plan, explain or adjust…" maxlength="2000" autocomplete="off" /><button class="send" id="send-button" type="submit" aria-label="Send message">↑</button></form>
+          </article>
+        </section>
+      </main>
+    </div>
+    <dialog id="event-dialog" aria-labelledby="event-dialog-title">
+      <div class="modal-head"><h2 id="event-dialog-title">Add to your plan</h2><button class="close-button" type="button" data-close="event-dialog" aria-label="Close">×</button></div>
+      <form class="event-form" id="event-form">
+        <input type="hidden" id="event-id" />
+        <div class="form-grid">
+          <div class="field wide"><label for="event-title">Title</label><input id="event-title" required maxlength="120" placeholder="What needs your attention?" /></div>
+          <div class="field"><label for="event-kind">Type</label><select id="event-kind"><option value="study">Study</option><option value="task">Task</option><option value="training">Training</option><option value="sleep">Sleep</option><option value="general">General</option></select></div>
+          <div class="field"><label for="event-subject">Subject</label><input id="event-subject" maxlength="80" placeholder="Optional" /></div>
+          <div class="field"><label for="event-start">Starts</label><input id="event-start" type="datetime-local" required /></div>
+          <div class="field"><label for="event-end">Ends</label><input id="event-end" type="datetime-local" required /></div>
+          <div class="field"><label for="event-repeat">Repeat</label><select id="event-repeat"><option value="">Does not repeat</option><option value="RRULE:FREQ=DAILY">Daily</option><option value="RRULE:FREQ=WEEKLY">Weekly</option></select></div>
+          <div class="field"><label for="event-all-day">Timing</label><label style="min-height:42px;display:flex;align-items:center;gap:8px;color:var(--ink);font-size:12px"><input id="event-all-day" type="checkbox" style="width:auto;min-height:auto" /> All-day event</label></div>
+          <div class="field wide"><label for="event-location">Location</label><input id="event-location" maxlength="160" placeholder="Optional" /></div>
+          <div class="field wide"><label for="event-description">Notes</label><textarea id="event-description" maxlength="1000" placeholder="Anything Arcadia should keep in mind"></textarea></div>
+        </div>
+        <p class="form-error" id="event-error" aria-live="polite"></p>
+        <div class="modal-actions"><div class="top-actions"><button class="button danger" id="delete-event-button" type="button" hidden>Delete</button><button class="button" id="complete-event-button" type="button" hidden>Mark complete</button></div><span></span><button class="button primary" type="submit">Save to plan</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="settings-dialog" aria-labelledby="settings-title">
+      <div class="modal-head"><h2 id="settings-title">Connections</h2><button class="close-button" type="button" data-close="settings-dialog" aria-label="Close">×</button></div>
+      <div class="settings-body"><div class="connection-card"><strong>Google Calendar</strong><p id="google-detail">Connect your calendars so Arcadia can plan around real commitments. Arcadia only writes study blocks to its own Google calendar.</p><div class="top-actions"><button class="button primary" id="google-connect" type="button">Connect Google</button><button class="button danger" id="google-disconnect" type="button" hidden>Disconnect</button></div></div></div>
+    </dialog>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/dashboard.js"></script>
+  </body>
+</html>
