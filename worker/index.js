@@ -7,14 +7,16 @@ import favicon from "../favicon.png?inline";
 import appleTouchIcon from "../apple-touch-icon.png?inline";
 import socialPreview from "../og-v3.png?inline";
 import {
-  completeEvent, createEvent, deleteEvent, ensureDatabase, getAnalytics, getEvent, listEvents,
-  listMessages, listPendingProposals, requireUser, updateEvent, upsertProfile, weekRange
+  completeEvent, createEvent, createTask, deleteEvent, ensureDatabase, getAnalytics, getEvent,
+  getPlannerData, listActivity, listEvents, listMessages, listPendingProposals, markEventOutcome,
+  requireUser, saveOnboarding, updateEvent, upsertProfile, weekRange
 } from "./db.js";
 import {
   beginGoogleOAuth, disconnectGoogle, finishGoogleOAuth, getGoogleStatus, publishArcadiaEvent,
   removePublishedEvent, syncGoogleCalendars
 } from "./google.js";
-import { applyProposal, chatStream, declineProposal, openAIConfigured } from "./openai.js";
+import { applyProposal, chatStream, declineProposal, mentorAvailable } from "./openai.js";
+import { buildBriefing, focusTasks, rebuildSchedule } from "./scheduler.js";
 
 const htmlHeaders = {
   "cache-control": "private, no-store",
@@ -25,14 +27,10 @@ const htmlHeaders = {
 };
 const jsonHeaders = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
 const imageAssets = new Map([
-  ["/arcadia-logo.png", arcadiaLogo],
-  ["/arcadia-mark.png", arcadiaMark],
-  ["/arcadia-mark-transparent.png", arcadiaMarkTransparent],
-  ["/favicon.png", favicon],
-  ["/apple-touch-icon.png", appleTouchIcon],
-  ["/og.png", socialPreview],
-  ["/og-v2.png", socialPreview],
-  ["/og-v3.png", socialPreview]
+  ["/arcadia-logo.png", arcadiaLogo], ["/arcadia-mark.png", arcadiaMark],
+  ["/arcadia-mark-transparent.png", arcadiaMarkTransparent], ["/favicon.png", favicon],
+  ["/apple-touch-icon.png", appleTouchIcon], ["/og.png", socialPreview],
+  ["/og-v2.png", socialPreview], ["/og-v3.png", socialPreview]
 ]);
 
 export default {
@@ -55,94 +53,148 @@ export default {
       await upsertProfile(env, user);
       return await routeApi(request, env, context, url, user);
     } catch (error) {
+      console.error("Arcadia request failed", { path: url.pathname, message: error?.message });
       const status = error.status || 500;
       return json({ error: status >= 500 ? friendlyError(error) : error.message }, status);
     }
   }
 };
 
-async function routeApi(request, env, context, url, user) {
+async function routeApi(request, env, context, url, authenticatedUser) {
   const method = request.method.toUpperCase();
   const path = url.pathname;
+
   if (method === "GET" && path === "/api/dashboard") {
     const range = weekRange(url.searchParams.get("date") || new Date());
-    const [events, analytics, google, messages, proposals] = await Promise.all([
-      listEvents(env, user.id, range.start, range.end),
-      getAnalytics(env, user.id, range.start, range.end),
-      getGoogleStatus(env, user.id),
-      listMessages(env, user.id, 20),
-      listPendingProposals(env, user.id)
+    const planner = await getPlannerData(env, authenticatedUser.id);
+    const [events, analytics, google, messages, proposals, activity] = await Promise.all([
+      listEvents(env, authenticatedUser.id, range.start, range.end),
+      getAnalytics(env, authenticatedUser.id, range.start, range.end),
+      getGoogleStatus(env, authenticatedUser.id),
+      listMessages(env, authenticatedUser.id, 24),
+      listPendingProposals(env, authenticatedUser.id),
+      listActivity(env, authenticatedUser.id, { start: new Date(Date.now() - 14 * 86_400_000).toISOString(), limit: 30 })
     ]);
     if (google.connected && (!google.lastSyncAt || Date.now() - Date.parse(google.lastSyncAt) > 5 * 60 * 1000)) {
-      context?.waitUntil?.(syncGoogleCalendars(env, user.id).catch(() => undefined));
+      context?.waitUntil?.(syncGoogleCalendars(env, authenticatedUser.id).catch((error) => console.error("Google sync failed", error?.message)));
     }
-    return json({ user, range, events, analytics, google, assistant: { configured: openAIConfigured(env), messages, proposals } });
+    const user = {
+      ...authenticatedUser,
+      name: planner.profile?.displayName || authenticatedUser.name,
+      grade: planner.profile?.grade || null,
+      timezone: planner.profile?.timezone || "Australia/Sydney",
+      onboardingComplete: Boolean(planner.profile?.onboardingComplete)
+    };
+    return json({
+      user, profile: planner.profile, preferences: planner.preferences, subjects: planner.subjects,
+      tasks: planner.tasks, commitments: planner.commitments, range, events, analytics, activity,
+      focusTasks: focusTasks(planner.tasks),
+      briefing: planner.profile?.onboardingComplete ? buildBriefing({ ...planner, events, now: new Date() }) : null,
+      google,
+      assistant: { configured: mentorAvailable(env), providerConfigured: Boolean(env.OPENAI_API_KEY), messages, proposals }
+    });
   }
+
+  if (method === "POST" && path === "/api/onboarding") {
+    const input = validateOnboarding(await readJson(request));
+    await saveOnboarding(env, authenticatedUser.id, input);
+    const schedule = await rebuildSchedule(env, authenticatedUser.id, { from: new Date(), horizonDays: 21 });
+    publishSchedule(context, env, authenticatedUser.id, schedule.created);
+    return json({ ok: true, createdCount: schedule.created.length, unscheduled: schedule.unscheduled }, 201);
+  }
+
+  if (method === "POST" && path === "/api/tasks") {
+    const input = validateTask(await readJson(request));
+    const task = await createTask(env, authenticatedUser.id, input);
+    const schedule = await rebuildSchedule(env, authenticatedUser.id, { from: new Date(), horizonDays: 21 });
+    publishSchedule(context, env, authenticatedUser.id, schedule.created);
+    return json({ task, schedule: scheduleSummary(schedule) }, 201);
+  }
+
+  if (method === "POST" && path === "/api/schedule/generate") {
+    const schedule = await rebuildSchedule(env, authenticatedUser.id, { from: new Date(), horizonDays: 21 });
+    publishSchedule(context, env, authenticatedUser.id, schedule.created);
+    return json({ schedule: scheduleSummary(schedule) });
+  }
+
   if (method === "GET" && path === "/api/analytics") {
     const range = weekRange(url.searchParams.get("date") || new Date());
-    return json({ range, analytics: await getAnalytics(env, user.id, range.start, range.end) });
+    return json({ range, analytics: await getAnalytics(env, authenticatedUser.id, range.start, range.end) });
   }
+
   if (path === "/api/events" && method === "POST") {
-    const body = await readJson(request);
-    const input = validateEvent(body);
-    const conflicts = await findConflicts(env, user.id, input, null);
-    if (conflicts.length && !body.allowOverlap) return json({ error: "This time overlaps another event.", conflicts }, 409);
-    let event = await createEvent(env, user.id, input);
-    event = await publishArcadiaEvent(env, user.id, event);
+    const input = validateEvent(await readJson(request));
+    const conflicts = await findConflicts(env, authenticatedUser.id, input, null);
+    if (conflicts.length) return json({ error: "This time overlaps another event. Choose a free time instead.", conflicts }, 409);
+    let event = await createEvent(env, authenticatedUser.id, input);
+    event = await publishArcadiaEvent(env, authenticatedUser.id, event);
     return json({ event }, 201);
   }
   if (path === "/api/events" && method === "PATCH") {
     const body = await readJson(request);
     if (!body.id) throw badRequest("An event id is required.");
-    return updateEventHandler(env, user.id, body.id, body);
+    return updateEventHandler(env, authenticatedUser.id, body.id, body);
   }
   if (path === "/api/events" && method === "DELETE") {
     const body = await readJson(request);
     if (!body.id) throw badRequest("An event id is required.");
-    return deleteEventHandler(env, user.id, body.id);
+    return deleteEventHandler(env, authenticatedUser.id, body.id);
   }
   const eventMatch = path.match(/^\/api\/events\/([^/]+)$/);
-  if (eventMatch && method === "PATCH") return updateEventHandler(env, user.id, decodeURIComponent(eventMatch[1]), await readJson(request));
-  if (eventMatch && method === "DELETE") return deleteEventHandler(env, user.id, decodeURIComponent(eventMatch[1]));
+  if (eventMatch && method === "PATCH") return updateEventHandler(env, authenticatedUser.id, decodeURIComponent(eventMatch[1]), await readJson(request));
+  if (eventMatch && method === "DELETE") return deleteEventHandler(env, authenticatedUser.id, decodeURIComponent(eventMatch[1]));
   const completionMatch = path.match(/^\/api\/events\/([^/]+)\/complete$/);
   if (completionMatch && method === "POST") {
-    const event = await completeEvent(env, user.id, decodeURIComponent(completionMatch[1]));
+    const event = await completeEvent(env, authenticatedUser.id, decodeURIComponent(completionMatch[1]));
     if (!event) return json({ error: "Event not found." }, 404);
     return json({ event });
   }
+  const outcomeMatch = path.match(/^\/api\/events\/([^/]+)\/outcome$/);
+  if (outcomeMatch && method === "POST") {
+    const body = await readJson(request);
+    if (!["completed", "missed"].includes(body.outcome)) throw badRequest("Choose completed or missed.");
+    const eventId = decodeURIComponent(outcomeMatch[1]);
+    const original = await getEvent(env, authenticatedUser.id, eventId);
+    const outcome = await markEventOutcome(env, authenticatedUser.id, eventId, body.outcome);
+    if (!outcome) return json({ error: "This study session is unavailable." }, 404);
+    if (body.outcome === "completed") return json({ outcome, message: `${original.title} is complete. Your progress has been saved.` });
+    const schedule = await rebuildSchedule(env, authenticatedUser.id, { from: new Date(), horizonDays: 21 });
+    publishSchedule(context, env, authenticatedUser.id, schedule.created);
+    const moved = schedule.created.find((event) => event.taskId === original.taskId);
+    const message = moved
+      ? `You missed ${original.title}, so I moved ${minutesBetween(original.startAt, original.endAt)} minutes to ${formatMove(moved.startAt)}. The rest of your plan was checked for conflicts.`
+      : `You missed ${original.title}. The work still remains, but there is no safe opening before its deadline. Review the task with your Mentor.`;
+    return json({ outcome, schedule: scheduleSummary(schedule), message });
+  }
 
   if (method === "GET" && path === "/api/google/connect") {
-    const location = await beginGoogleOAuth(env, user, url.origin);
-    return Response.redirect(location, 302);
+    return Response.redirect(await beginGoogleOAuth(env, authenticatedUser, url.origin), 302);
   }
   if (method === "GET" && path === "/api/google/callback") {
     if (url.searchParams.get("error")) return Response.redirect(`${url.origin}/?google=denied`, 302);
-    await finishGoogleOAuth(env, user, url.origin, url.searchParams.get("code"), url.searchParams.get("state"));
+    await finishGoogleOAuth(env, authenticatedUser, url.origin, url.searchParams.get("code"), url.searchParams.get("state"));
     return Response.redirect(`${url.origin}/?google=connected`, 302);
   }
-  if (method === "POST" && path === "/api/google/sync") {
-    const lastSyncAt = await syncGoogleCalendars(env, user.id);
-    return json({ ok: true, lastSyncAt });
-  }
+  if (method === "POST" && path === "/api/google/sync") return json({ ok: true, lastSyncAt: await syncGoogleCalendars(env, authenticatedUser.id) });
   if (method === "DELETE" && path === "/api/google/connection") {
-    await disconnectGoogle(env, user.id);
+    await disconnectGoogle(env, authenticatedUser.id);
     return json({ ok: true });
   }
 
-  if (method === "GET" && path === "/api/chat") return json({ messages: await listMessages(env, user.id), proposals: await listPendingProposals(env, user.id) });
+  if (method === "GET" && path === "/api/chat") return json({ messages: await listMessages(env, authenticatedUser.id), proposals: await listPendingProposals(env, authenticatedUser.id) });
   if (method === "POST" && path === "/api/chat") {
     const body = await readJson(request);
-    return chatStream(env, user, body.message);
+    return chatStream(env, authenticatedUser, body.message, context);
   }
   const proposalMatch = path.match(/^\/api\/proposals\/([^/]+)\/(apply|decline)$/);
   if (proposalMatch && method === "POST") {
     const id = decodeURIComponent(proposalMatch[1]);
     if (proposalMatch[2] === "apply") {
-      const proposal = await applyProposal(env, user.id, id);
+      const proposal = await applyProposal(env, authenticatedUser.id, id);
       if (!proposal) return json({ error: "This proposal is unavailable or has already been handled." }, 409);
       return json({ proposal });
     }
-    const declined = await declineProposal(env, user.id, id);
+    const declined = await declineProposal(env, authenticatedUser.id, id);
     if (!declined) return json({ error: "This proposal is unavailable or has already been handled." }, 409);
     return json({ ok: true });
   }
@@ -152,10 +204,10 @@ async function routeApi(request, env, context, url, user) {
 async function updateEventHandler(env, userId, id, body) {
   const existing = await getEvent(env, userId, id);
   if (!existing) return json({ error: "Event not found." }, 404);
-  if (!existing.editable || existing.source !== "arcadia") return json({ error: "Imported Google events are read-only." }, 403);
+  if (!existing.editable || existing.source !== "arcadia") return json({ error: "Fixed and imported events are read-only here. Update them in Life setup or their source calendar." }, 403);
   const input = validateEvent({ ...existing, ...body });
   const conflicts = await findConflicts(env, userId, input, id);
-  if (conflicts.length && !body.allowOverlap) return json({ error: "This time overlaps another event.", conflicts }, 409);
+  if (conflicts.length) return json({ error: "This time overlaps another event. Choose a free time instead.", conflicts }, 409);
   let event = await updateEvent(env, userId, id, input);
   event = await publishArcadiaEvent(env, userId, event);
   return json({ event });
@@ -168,23 +220,88 @@ async function deleteEventHandler(env, userId, id) {
   return json({ ok: true });
 }
 
+function validateOnboarding(body) {
+  const name = text(body.name, 80);
+  const grade = text(body.grade, 40);
+  const timezone = text(body.timezone, 80) || "Australia/Sydney";
+  if (!name || !grade) throw badRequest("Add your name and school year.");
+  try { new Intl.DateTimeFormat("en", { timeZone: timezone }).format(); } catch { throw badRequest("Choose a valid timezone."); }
+
+  if (!Array.isArray(body.subjects) || body.subjects.length < 1 || body.subjects.length > 20) throw badRequest("Add between 1 and 20 subjects.");
+  const seen = new Set();
+  const subjects = body.subjects.map((raw, index) => {
+    const subjectName = text(raw.name, 80);
+    if (!subjectName) throw badRequest(`Subject ${index + 1} needs a name.`);
+    const key = subjectName.toLowerCase();
+    if (seen.has(key)) throw badRequest(`${subjectName} is listed more than once.`);
+    seen.add(key);
+    return { name: subjectName, color: validColor(raw.color), icon: text(raw.icon, 8) || null, priority: priority(raw.priority) };
+  });
+
+  const tasks = (Array.isArray(body.tasks) ? body.tasks : []).slice(0, 40).map((raw) => validateTask(raw, { subjects: seen }));
+  const commitments = (Array.isArray(body.commitments) ? body.commitments : []).slice(0, 60).map(validateCommitment);
+  const preferences = validatePreferences(body.preferences || {});
+  return { name, grade, timezone, subjects, tasks, commitments, preferences };
+}
+
+function validateTask(body, { subjects } = {}) {
+  const title = text(body.title, 120);
+  const subject = text(body.subject, 80);
+  const taskType = text(body.taskType, 30) || "homework";
+  const due = new Date(body.dueAt);
+  const estimatedMinutes = Math.round(Number(body.estimatedMinutes));
+  if (!title) throw badRequest("Every task needs a title.");
+  if (subjects && subject && !subjects.has(subject.toLowerCase())) throw badRequest(`${subject} must be added as a subject first.`);
+  if (!["homework", "assignment", "exam", "revision", "project", "other"].includes(taskType)) throw badRequest("Choose a valid task type.");
+  if (Number.isNaN(due.valueOf())) throw badRequest(`${title} needs a valid due date.`);
+  if (!Number.isInteger(estimatedMinutes) || estimatedMinutes < 15 || estimatedMinutes > 24 * 60) throw badRequest(`${title} needs an estimate between 15 minutes and 24 hours.`);
+  return { title, subject: subject || null, taskType, dueAt: due.toISOString(), estimatedMinutes, priority: priority(body.priority), notes: text(body.notes, 1000) };
+}
+
+function validateCommitment(body) {
+  const title = text(body.title, 120);
+  const category = text(body.category, 30);
+  const recurrence = text(body.recurrence, 20) || "none";
+  const startTime = validTime(body.startTime);
+  const endTime = validTime(body.endTime);
+  const weekday = body.weekday === null || body.weekday === undefined || body.weekday === "" ? null : Number(body.weekday);
+  const startDate = body.startDate ? text(body.startDate, 10) : null;
+  if (!title) throw badRequest("Every commitment needs a title.");
+  if (!["school", "sport", "extracurricular", "other"].includes(category)) throw badRequest(`Choose a valid category for ${title}.`);
+  if (!["none", "weekly", "weekdays"].includes(recurrence)) throw badRequest(`Choose a valid recurrence for ${title}.`);
+  if (!startTime || !endTime || startTime === endTime) throw badRequest(`${title} needs valid start and end times.`);
+  if (recurrence === "weekly" && (!Number.isInteger(weekday) || weekday < 0 || weekday > 6)) throw badRequest(`${title} needs a weekday.`);
+  if (recurrence === "none" && !/^\d{4}-\d{2}-\d{2}$/.test(startDate || "")) throw badRequest(`${title} needs a date.`);
+  return { title, subject: text(body.subject, 80) || null, category, startDate, weekday, startTime, endTime, recurrence, notes: text(body.notes, 1000) };
+}
+
+function validatePreferences(body) {
+  const bedtime = validTime(body.bedtime) || "22:30";
+  const wakeTime = validTime(body.wakeTime) || "06:30";
+  const minimumSleepMinutes = clampInt(body.minimumSleepMinutes, 360, 720, 480);
+  const maxDailyStudyMinutes = clampInt(body.maxDailyStudyMinutes, 60, 480, 180);
+  const preferredSessionMinutes = clampInt(body.preferredSessionMinutes, 25, 120, 60);
+  const breakMinutes = clampInt(body.breakMinutes, 5, 60, 15);
+  const sleepWindow = (timeToMinutes(wakeTime) - timeToMinutes(bedtime) + 1440) % 1440;
+  if (sleepWindow < minimumSleepMinutes) throw badRequest("Your bedtime and wake time do not allow the minimum sleep target.");
+  return { bedtime, wakeTime, minimumSleepMinutes, maxDailyStudyMinutes, preferredSessionMinutes, breakMinutes };
+}
+
 function validateEvent(body) {
-  const title = String(body.title || "").trim().slice(0, 120);
-  const kind = String(body.kind || "general");
+  const title = text(body.title, 120);
+  const kind = text(body.kind, 30) || "general";
+  const category = text(body.category, 30) || ({ study: "study", task: "study", training: "sport", sleep: "sleep" }[kind] || "other");
   if (!title) throw badRequest("Add a title for this event.");
   if (!["task", "study", "training", "sleep", "general"].includes(kind)) throw badRequest("Choose a valid event type.");
+  if (!["school", "study", "sport", "extracurricular", "other", "sleep"].includes(category)) throw badRequest("Choose a valid event category.");
   const start = new Date(body.startAt); const end = new Date(body.endAt);
   if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf())) throw badRequest("Choose valid start and end times.");
   if (end <= start) throw badRequest("The end time must be after the start time.");
-  if (end - start > 14 * 24 * 60 * 60 * 1000) throw badRequest("An event cannot be longer than 14 days.");
-  const recurrence = body.recurrence ? String(body.recurrence).trim().slice(0, 500) : null;
+  if (end - start > 14 * DAY_MS) throw badRequest("An event cannot be longer than 14 days.");
+  const recurrence = body.recurrence ? text(body.recurrence, 500) : null;
   if (recurrence && !/^RRULE:/i.test(recurrence)) throw badRequest("Recurrence must use an RRULE value.");
-  return {
-    title, kind, startAt: start.toISOString(), endAt: end.toISOString(), allDay: Boolean(body.allDay), recurrence,
-    description: String(body.description || "").trim().slice(0, 1000),
-    subject: String(body.subject || "").trim().slice(0, 80) || null,
-    location: String(body.location || "").trim().slice(0, 160) || null
-  };
+  return { title, kind, category, startAt: start.toISOString(), endAt: end.toISOString(), allDay: Boolean(body.allDay), recurrence,
+    description: text(body.description, 1000), subject: text(body.subject, 80) || null, location: text(body.location, 160) || null };
 }
 
 async function findConflicts(env, userId, input, excludeId) {
@@ -196,6 +313,11 @@ async function findConflicts(env, userId, input, excludeId) {
   return result.results || [];
 }
 
+function publishSchedule(context, env, userId, events) {
+  const work = Promise.all(events.map((event) => publishArcadiaEvent(env, userId, event))).catch((error) => console.error("Calendar publishing failed", error?.message));
+  context?.waitUntil?.(work);
+}
+function scheduleSummary(schedule) { return { createdCount: schedule.created.length, unscheduled: schedule.unscheduled, created: schedule.created }; }
 async function readJson(request) {
   if (!request.headers.get("content-type")?.includes("application/json")) throw badRequest("Expected JSON input.");
   try { return await request.json(); } catch { throw badRequest("The request body is invalid."); }
@@ -211,3 +333,12 @@ function decodeDataUrl(dataUrl) {
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
   return bytes;
 }
+function text(value, max) { return String(value || "").trim().slice(0, max); }
+function validTime(value) { const clean = String(value || ""); return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(clean) ? clean : null; }
+function validColor(value) { const clean = String(value || ""); return /^#[0-9a-f]{6}$/i.test(clean) ? clean : null; }
+function priority(value) { const number = Number(value); return [1, 2, 3].includes(number) ? number : 2; }
+function clampInt(value, min, max, fallback) { const number = Math.round(Number(value)); return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback; }
+function timeToMinutes(value) { const [hour, minute] = value.split(":").map(Number); return hour * 60 + minute; }
+function minutesBetween(start, end) { return Math.max(0, Math.round((Date.parse(end) - Date.parse(start)) / 60000)); }
+function formatMove(value) { return new Intl.DateTimeFormat("en-AU", { weekday: "long", hour: "numeric", minute: "2-digit" }).format(new Date(value)); }
+const DAY_MS = 86_400_000;

@@ -32,19 +32,232 @@ export async function upsertProfile(env, user) {
   await env.DB.prepare(`
     INSERT INTO profiles (user_id, email, display_name, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET email = excluded.email, display_name = excluded.display_name, updated_at = excluded.updated_at
+    ON CONFLICT(user_id) DO UPDATE SET email = excluded.email,
+      display_name = COALESCE(profiles.display_name, excluded.display_name), updated_at = excluded.updated_at
   `).bind(user.id, user.email, user.name, now, now).run();
+  await env.DB.prepare(`
+    INSERT INTO user_preferences (user_id, updated_at) VALUES (?, ?)
+    ON CONFLICT(user_id) DO NOTHING
+  `).bind(user.id, now).run();
 }
 
-export async function listEvents(env, userId, start, end) {
+export async function getProfile(env, userId) {
+  const row = await env.DB.prepare(`
+    SELECT user_id AS userId, email, display_name AS displayName, grade, timezone,
+      onboarding_complete AS onboardingComplete, created_at AS createdAt, updated_at AS updatedAt
+    FROM profiles WHERE user_id = ?
+  `).bind(userId).first();
+  return row ? { ...row, onboardingComplete: Boolean(row.onboardingComplete) } : null;
+}
+
+export async function getPreferences(env, userId) {
+  const row = await env.DB.prepare(`
+    SELECT bedtime, wake_time AS wakeTime, minimum_sleep_minutes AS minimumSleepMinutes,
+      max_daily_study_minutes AS maxDailyStudyMinutes, preferred_session_minutes AS preferredSessionMinutes,
+      break_minutes AS breakMinutes, updated_at AS updatedAt
+    FROM user_preferences WHERE user_id = ?
+  `).bind(userId).first();
+  return row || {
+    bedtime: "22:30", wakeTime: "06:30", minimumSleepMinutes: 480,
+    maxDailyStudyMinutes: 180, preferredSessionMinutes: 60, breakMinutes: 15
+  };
+}
+
+export async function listSubjects(env, userId) {
+  const result = await env.DB.prepare(`
+    SELECT id, name, color, icon, priority, created_at AS createdAt, updated_at AS updatedAt
+    FROM subjects WHERE user_id = ? ORDER BY name COLLATE NOCASE
+  `).bind(userId).all();
+  return result.results || [];
+}
+
+export async function listTasks(env, userId, { includeArchived = false } = {}) {
+  const result = await env.DB.prepare(`
+    SELECT t.id, t.subject_id AS subjectId, s.name AS subject, s.color AS subjectColor, t.title,
+      t.task_type AS taskType, t.due_at AS dueAt, t.estimated_minutes AS estimatedMinutes,
+      t.remaining_minutes AS remainingMinutes, t.priority, t.status, t.notes,
+      t.completed_at AS completedAt, t.created_at AS createdAt, t.updated_at AS updatedAt
+    FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id
+    WHERE t.user_id = ? AND (? = 1 OR t.status != 'archived')
+    ORDER BY CASE t.status WHEN 'pending' THEN 0 ELSE 1 END, t.due_at, t.priority DESC
+  `).bind(userId, includeArchived ? 1 : 0).all();
+  return result.results || [];
+}
+
+export async function getTask(env, userId, id) {
+  const row = await env.DB.prepare(`
+    SELECT t.id, t.subject_id AS subjectId, s.name AS subject, s.color AS subjectColor, t.title,
+      t.task_type AS taskType, t.due_at AS dueAt, t.estimated_minutes AS estimatedMinutes,
+      t.remaining_minutes AS remainingMinutes, t.priority, t.status, t.notes,
+      t.completed_at AS completedAt, t.created_at AS createdAt, t.updated_at AS updatedAt
+    FROM tasks t LEFT JOIN subjects s ON s.id = t.subject_id
+    WHERE t.user_id = ? AND t.id = ?
+  `).bind(userId, id).first();
+  return row || null;
+}
+
+export async function listCommitments(env, userId) {
+  const result = await env.DB.prepare(`
+    SELECT c.id, c.subject_id AS subjectId, s.name AS subject, c.title, c.category,
+      c.start_date AS startDate, c.weekday, c.start_time AS startTime, c.end_time AS endTime,
+      c.recurrence, c.active, c.notes, c.created_at AS createdAt, c.updated_at AS updatedAt
+    FROM commitments c LEFT JOIN subjects s ON s.id = c.subject_id
+    WHERE c.user_id = ? AND c.active = 1
+    ORDER BY COALESCE(c.weekday, 8), c.start_time, c.title
+  `).bind(userId).all();
+  return (result.results || []).map((row) => ({ ...row, active: Boolean(row.active) }));
+}
+
+export async function createCommitment(env, userId, input) {
+  const now = new Date().toISOString();
+  const commitment = {
+    id: crypto.randomUUID(), title: input.title, category: input.category || "other",
+    startDate: input.startDate || null, weekday: input.weekday ?? null,
+    startTime: input.startTime, endTime: input.endTime, recurrence: input.recurrence || "none",
+    notes: input.notes || ""
+  };
+  await env.DB.prepare(`
+    INSERT INTO commitments (id, user_id, title, category, start_date, weekday, start_time, end_time,
+      recurrence, active, notes, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+  `).bind(commitment.id, userId, commitment.title, commitment.category, commitment.startDate,
+    commitment.weekday, commitment.startTime, commitment.endTime, commitment.recurrence,
+    commitment.notes, now, now).run();
+  return commitment;
+}
+
+export async function updateCommitmentTime(env, userId, id, startTime, endTime) {
+  const result = await env.DB.prepare(`
+    UPDATE commitments SET start_time = ?, end_time = ?, updated_at = ?
+    WHERE id = ? AND user_id = ? AND active = 1
+  `).bind(startTime, endTime, new Date().toISOString(), id, userId).run();
+  return Number(result.meta?.changes || 0) > 0;
+}
+
+export async function listActivity(env, userId, { start = "1970-01-01T00:00:00.000Z", end = "9999-12-31T23:59:59.999Z", limit = 100 } = {}) {
+  const result = await env.DB.prepare(`
+    SELECT a.id, a.event_id AS eventId, a.task_id AS taskId, a.outcome, a.duration_minutes AS durationMinutes,
+      a.occurred_at AS occurredAt, a.detail, a.created_at AS createdAt, t.title AS taskTitle, s.name AS subject
+    FROM activity a LEFT JOIN tasks t ON t.id = a.task_id LEFT JOIN subjects s ON s.id = t.subject_id
+    WHERE a.user_id = ? AND a.occurred_at >= ? AND a.occurred_at < ?
+    ORDER BY a.occurred_at DESC LIMIT ?
+  `).bind(userId, start, end, Math.min(250, Math.max(1, limit))).all();
+  return result.results || [];
+}
+
+export async function saveOnboarding(env, userId, input) {
+  const now = new Date().toISOString();
+  const currentSubjects = await listSubjects(env, userId);
+  const subjectIds = new Map(currentSubjects.map((subject) => [subject.name.trim().toLowerCase(), subject.id]));
+  const statements = [
+    env.DB.prepare(`UPDATE profiles SET display_name = ?, grade = ?, timezone = ?, onboarding_complete = 1, updated_at = ? WHERE user_id = ?`)
+      .bind(input.name, input.grade, input.timezone, now, userId),
+    env.DB.prepare(`
+      INSERT INTO user_preferences (user_id, bedtime, wake_time, minimum_sleep_minutes, max_daily_study_minutes,
+        preferred_session_minutes, break_minutes, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET bedtime = excluded.bedtime, wake_time = excluded.wake_time,
+        minimum_sleep_minutes = excluded.minimum_sleep_minutes, max_daily_study_minutes = excluded.max_daily_study_minutes,
+        preferred_session_minutes = excluded.preferred_session_minutes, break_minutes = excluded.break_minutes,
+        updated_at = excluded.updated_at
+    `).bind(userId, input.preferences.bedtime, input.preferences.wakeTime, input.preferences.minimumSleepMinutes,
+      input.preferences.maxDailyStudyMinutes, input.preferences.preferredSessionMinutes, input.preferences.breakMinutes, now),
+    env.DB.prepare("DELETE FROM events WHERE user_id = ? AND source = 'arcadia' AND outcome = 'planned'").bind(userId),
+    env.DB.prepare("DELETE FROM tasks WHERE user_id = ? AND status = 'pending'").bind(userId),
+    env.DB.prepare("DELETE FROM commitments WHERE user_id = ? AND active = 1").bind(userId)
+  ];
+
+  for (const subject of input.subjects) {
+    const key = subject.name.toLowerCase();
+    const id = subjectIds.get(key) || crypto.randomUUID();
+    subjectIds.set(key, id);
+    statements.push(env.DB.prepare(`
+      INSERT INTO subjects (id, user_id, name, color, icon, priority, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, name COLLATE NOCASE) DO UPDATE SET color = excluded.color, icon = excluded.icon,
+        priority = excluded.priority, updated_at = excluded.updated_at
+    `).bind(id, userId, subject.name, subject.color, subject.icon, subject.priority, now, now));
+  }
+  for (const task of input.tasks) {
+    const subjectId = subjectIds.get(String(task.subject || "").toLowerCase()) || null;
+    statements.push(env.DB.prepare(`
+      INSERT INTO tasks (id, user_id, subject_id, title, task_type, due_at, estimated_minutes,
+        remaining_minutes, priority, status, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+    `).bind(crypto.randomUUID(), userId, subjectId, task.title, task.taskType, task.dueAt,
+      task.estimatedMinutes, task.estimatedMinutes, task.priority, task.notes, now, now));
+  }
+  for (const commitment of input.commitments) {
+    const subjectId = subjectIds.get(String(commitment.subject || "").toLowerCase()) || null;
+    statements.push(env.DB.prepare(`
+      INSERT INTO commitments (id, user_id, subject_id, title, category, start_date, weekday,
+        start_time, end_time, recurrence, active, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+    `).bind(crypto.randomUUID(), userId, subjectId, commitment.title, commitment.category,
+      commitment.startDate, commitment.weekday, commitment.startTime, commitment.endTime,
+      commitment.recurrence, commitment.notes, now, now));
+  }
+  await env.DB.batch(statements);
+  return getPlannerData(env, userId);
+}
+
+export async function getOrCreateSubject(env, userId, name, { color = null, priority = 2 } = {}) {
+  const clean = String(name || "").trim().slice(0, 80);
+  if (!clean) return null;
+  const existing = await env.DB.prepare("SELECT id, name, color, priority FROM subjects WHERE user_id = ? AND name = ? COLLATE NOCASE")
+    .bind(userId, clean).first();
+  if (existing) return existing;
+  const subject = { id: crypto.randomUUID(), name: clean, color, priority };
+  const now = new Date().toISOString();
+  await env.DB.prepare(`INSERT INTO subjects (id, user_id, name, color, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .bind(subject.id, userId, subject.name, subject.color, subject.priority, now, now).run();
+  return subject;
+}
+
+export async function createTask(env, userId, input) {
+  const subject = input.subject ? await getOrCreateSubject(env, userId, input.subject, { priority: input.priority }) : null;
+  const now = new Date().toISOString();
+  const task = {
+    id: crypto.randomUUID(), subjectId: subject?.id || null, title: input.title, taskType: input.taskType || "homework",
+    dueAt: input.dueAt, estimatedMinutes: input.estimatedMinutes, remainingMinutes: input.estimatedMinutes,
+    priority: input.priority || 2, status: "pending", notes: input.notes || "", createdAt: now, updatedAt: now
+  };
+  await env.DB.prepare(`
+    INSERT INTO tasks (id, user_id, subject_id, title, task_type, due_at, estimated_minutes, remaining_minutes,
+      priority, status, notes, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+  `).bind(task.id, userId, task.subjectId, task.title, task.taskType, task.dueAt, task.estimatedMinutes,
+    task.remainingMinutes, task.priority, task.notes, now, now).run();
+  return getTask(env, userId, task.id);
+}
+
+export async function addTaskTime(env, userId, taskId, minutes) {
+  const safeMinutes = Math.min(12 * 60, Math.max(15, Math.round(Number(minutes) || 0)));
+  const result = await env.DB.prepare(`
+    UPDATE tasks SET estimated_minutes = estimated_minutes + ?, remaining_minutes = remaining_minutes + ?,
+      status = 'pending', completed_at = NULL, updated_at = ? WHERE id = ? AND user_id = ? AND status != 'archived'
+  `).bind(safeMinutes, safeMinutes, new Date().toISOString(), taskId, userId).run();
+  return Number(result.meta?.changes || 0) ? getTask(env, userId, taskId) : null;
+}
+
+export async function getPlannerData(env, userId) {
+  const [profile, preferences, subjects, tasks, commitments] = await Promise.all([
+    getProfile(env, userId), getPreferences(env, userId), listSubjects(env, userId),
+    listTasks(env, userId), listCommitments(env, userId)
+  ]);
+  return { profile, preferences, subjects, tasks, commitments };
+}
+
+export async function listEvents(env, userId, start, end, { includeCancelled = false } = {}) {
   const result = await env.DB.prepare(`
     SELECT id, source, external_id AS externalId, calendar_id AS calendarId, title, description, kind,
       subject, location, start_at AS startAt, end_at AS endAt, all_day AS allDay, status, editable,
-      recurrence, sync_status AS syncStatus
+      recurrence, sync_status AS syncStatus, task_id AS taskId, commitment_id AS commitmentId,
+      event_category AS category, outcome, occurrence_key AS occurrenceKey
     FROM events
-    WHERE user_id = ? AND start_at < ? AND end_at > ? AND status != 'cancelled'
+    WHERE user_id = ? AND start_at < ? AND end_at > ? AND (? = 1 OR status != 'cancelled')
     ORDER BY start_at ASC
-  `).bind(userId, end, start).all();
+  `).bind(userId, end, start, includeCancelled ? 1 : 0).all();
   return (result.results || []).map(normalizeEvent);
 }
 
@@ -52,7 +265,8 @@ export async function getEvent(env, userId, id) {
   const row = await env.DB.prepare(`
     SELECT id, source, external_id AS externalId, calendar_id AS calendarId, title, description, kind,
       subject, location, start_at AS startAt, end_at AS endAt, all_day AS allDay, status, editable,
-      recurrence, sync_status AS syncStatus
+      recurrence, sync_status AS syncStatus, task_id AS taskId, commitment_id AS commitmentId,
+      event_category AS category, outcome, occurrence_key AS occurrenceKey
     FROM events WHERE id = ? AND user_id = ?
   `).bind(id, userId).first();
   return row ? normalizeEvent(row) : null;
@@ -65,14 +279,18 @@ export async function createEvent(env, userId, input) {
     title: input.title, description: input.description || "", kind: input.kind || "general",
     subject: input.subject || null, location: input.location || null, startAt: input.startAt,
     endAt: input.endAt, allDay: Boolean(input.allDay), status: "planned", editable: true,
-    recurrence: input.recurrence || null, syncStatus: "local"
+    recurrence: input.recurrence || null, syncStatus: "local", taskId: input.taskId || null,
+    commitmentId: input.commitmentId || null, category: input.category || categoryForKind(input.kind),
+    outcome: "planned", occurrenceKey: input.occurrenceKey || null
   };
   await env.DB.prepare(`
     INSERT INTO events (id, user_id, source, title, description, kind, subject, location, start_at, end_at,
-      all_day, status, editable, recurrence, sync_status, created_at, updated_at)
-    VALUES (?, ?, 'arcadia', ?, ?, ?, ?, ?, ?, ?, ?, 'planned', 1, ?, 'local', ?, ?)
+      all_day, status, editable, recurrence, sync_status, task_id, commitment_id, event_category, outcome,
+      occurrence_key, created_at, updated_at)
+    VALUES (?, ?, 'arcadia', ?, ?, ?, ?, ?, ?, ?, ?, 'planned', 1, ?, 'local', ?, ?, ?, 'planned', ?, ?, ?)
   `).bind(event.id, userId, event.title, event.description, event.kind, event.subject, event.location,
-    event.startAt, event.endAt, event.allDay ? 1 : 0, event.recurrence, now, now).run();
+    event.startAt, event.endAt, event.allDay ? 1 : 0, event.recurrence, event.taskId, event.commitmentId,
+    event.category, event.occurrenceKey, now, now).run();
   return event;
 }
 
@@ -82,10 +300,11 @@ export async function updateEvent(env, userId, id, input) {
   const next = { ...existing, ...input, id, source: "arcadia", editable: true };
   await env.DB.prepare(`
     UPDATE events SET title = ?, description = ?, kind = ?, subject = ?, location = ?, start_at = ?, end_at = ?,
-      all_day = ?, recurrence = ?, sync_status = CASE WHEN external_id IS NULL THEN 'local' ELSE 'pending' END, updated_at = ?
+      all_day = ?, recurrence = ?, event_category = ?, sync_status = CASE WHEN external_id IS NULL THEN 'local' ELSE 'pending' END, updated_at = ?
     WHERE id = ? AND user_id = ? AND source = 'arcadia' AND editable = 1
   `).bind(next.title, next.description || "", next.kind, next.subject || null, next.location || null,
-    next.startAt, next.endAt, next.allDay ? 1 : 0, next.recurrence || null, new Date().toISOString(), id, userId).run();
+    next.startAt, next.endAt, next.allDay ? 1 : 0, next.recurrence || null,
+    next.category || categoryForKind(next.kind), new Date().toISOString(), id, userId).run();
   return getEvent(env, userId, id);
 }
 
@@ -97,37 +316,79 @@ export async function deleteEvent(env, userId, id) {
   return existing;
 }
 
-export async function completeEvent(env, userId, id) {
+export async function markEventOutcome(env, userId, id, outcome) {
   const event = await getEvent(env, userId, id);
-  if (!event || event.source !== "arcadia") return null;
-  const completed = event.status !== "completed";
+  if (!event || event.source !== "arcadia" || event.category !== "study" || !["completed", "missed"].includes(outcome)) return null;
+  if (event.outcome === outcome) return { event, task: event.taskId ? await getTask(env, userId, event.taskId) : null, changed: false };
+  if (event.outcome !== "planned") return null;
   const now = new Date().toISOString();
-  const statements = [env.DB.prepare("UPDATE events SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?")
-    .bind(completed ? "completed" : "planned", now, id, userId)];
-  if (completed && event.kind === "study") {
-    const duration = Math.max(0, Math.round((Date.parse(event.endAt) - Date.parse(event.startAt)) / 60000));
+  const duration = minutesBetween(event.startAt, event.endAt);
+  const statements = [
+    env.DB.prepare("UPDATE events SET status = ?, outcome = ?, updated_at = ? WHERE id = ? AND user_id = ? AND outcome = 'planned'")
+      .bind(outcome === "completed" ? "completed" : "cancelled", outcome, now, id, userId),
+    env.DB.prepare("DELETE FROM activity WHERE event_id = ? AND user_id = ?").bind(id, userId),
+    env.DB.prepare(`INSERT INTO activity (id, user_id, event_id, task_id, outcome, duration_minutes, occurred_at, detail, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(crypto.randomUUID(), userId, id, event.taskId, outcome, duration, now,
+        `${event.title} · ${new Date(event.startAt).toISOString()}`, now)
+  ];
+  if (outcome === "completed") {
+    statements.push(env.DB.prepare("DELETE FROM study_sessions WHERE event_id = ? AND user_id = ?").bind(id, userId));
     statements.push(env.DB.prepare(`
       INSERT INTO study_sessions (id, user_id, event_id, subject, started_at, ended_at, duration_minutes, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(crypto.randomUUID(), userId, id, event.subject, event.startAt, event.endAt, duration, now));
-  } else if (!completed) {
-    statements.push(env.DB.prepare("DELETE FROM study_sessions WHERE event_id = ? AND user_id = ?").bind(id, userId));
+    if (event.taskId) {
+      statements.push(env.DB.prepare(`
+        UPDATE tasks SET remaining_minutes = MAX(0, remaining_minutes - ?),
+          status = CASE WHEN remaining_minutes - ? <= 0 THEN 'completed' ELSE 'pending' END,
+          completed_at = CASE WHEN remaining_minutes - ? <= 0 THEN ? ELSE NULL END, updated_at = ?
+        WHERE id = ? AND user_id = ?
+      `).bind(duration, duration, duration, now, now, event.taskId, userId));
+    }
   }
   await env.DB.batch(statements);
+  return { event: await getEvent(env, userId, id), task: event.taskId ? await getTask(env, userId, event.taskId) : null, changed: true };
+}
+
+export async function completeEvent(env, userId, id) {
+  const event = await getEvent(env, userId, id);
+  if (!event || event.source !== "arcadia") return null;
+  if (event.category === "study" && event.outcome === "planned") return (await markEventOutcome(env, userId, id, "completed"))?.event || null;
+  if (event.category === "study" && event.outcome === "completed") {
+    const duration = minutesBetween(event.startAt, event.endAt);
+    const statements = [
+      env.DB.prepare("UPDATE events SET status = 'planned', outcome = 'planned', updated_at = ? WHERE id = ? AND user_id = ?")
+        .bind(new Date().toISOString(), id, userId),
+      env.DB.prepare("DELETE FROM activity WHERE event_id = ? AND user_id = ?").bind(id, userId),
+      env.DB.prepare("DELETE FROM study_sessions WHERE event_id = ? AND user_id = ?").bind(id, userId)
+    ];
+    if (event.taskId) statements.push(env.DB.prepare(`
+      UPDATE tasks SET remaining_minutes = MIN(estimated_minutes, remaining_minutes + ?), status = 'pending',
+        completed_at = NULL, updated_at = ? WHERE id = ? AND user_id = ?
+    `).bind(duration, new Date().toISOString(), event.taskId, userId));
+    await env.DB.batch(statements);
+    return getEvent(env, userId, id);
+  }
+  const completed = event.status !== "completed";
+  await env.DB.prepare("UPDATE events SET status = ?, outcome = ?, updated_at = ? WHERE id = ? AND user_id = ?")
+    .bind(completed ? "completed" : "planned", completed ? "completed" : "planned", new Date().toISOString(), id, userId).run();
   return getEvent(env, userId, id);
 }
 
 export async function getAnalytics(env, userId, start, end) {
-  const rows = await listEvents(env, userId, start, end);
-  const arcadia = rows.filter((event) => event.source === "arcadia");
-  const completed = arcadia.filter((event) => event.status === "completed");
-  const study = arcadia.filter((event) => event.kind === "study");
-  const completedStudy = completed.filter((event) => event.kind === "study");
+  const [rows, activity, preferences] = await Promise.all([
+    listEvents(env, userId, start, end), listActivity(env, userId, { start, end, limit: 250 }), getPreferences(env, userId)
+  ]);
+  const study = rows.filter((event) => event.category === "study");
+  const completedStudy = study.filter((event) => event.outcome === "completed");
+  const missed = activity.filter((item) => item.outcome === "missed").length;
+  const completedActivities = activity.filter((item) => item.outcome === "completed");
   const focusedMinutes = completedStudy.reduce((sum, event) => sum + minutesBetween(event.startAt, event.endAt), 0);
-  const plannedMinutes = study.reduce((sum, event) => sum + minutesBetween(event.startAt, event.endAt), 0);
-  const totalMinutes = arcadia.reduce((sum, event) => sum + minutesBetween(event.startAt, event.endAt), 0);
+  const plannedMinutes = study.filter((event) => event.outcome === "planned").reduce((sum, event) => sum + minutesBetween(event.startAt, event.endAt), 0);
+  const denominator = completedActivities.length + missed + study.filter((event) => event.outcome === "planned").length;
   const subjects = new Map();
-  for (const event of study) {
+  for (const event of completedStudy) {
     const subject = event.subject || "General";
     subjects.set(subject, (subjects.get(subject) || 0) + minutesBetween(event.startAt, event.endAt));
   }
@@ -136,10 +397,12 @@ export async function getAnalytics(env, userId, start, end) {
   return {
     focusedMinutes,
     plannedMinutes,
-    completionRate: arcadia.length ? Math.round((completed.length / arcadia.length) * 100) : 0,
-    completedCount: completed.length,
-    plannedCount: arcadia.length,
-    capacityMinutes: Math.max(0, 20 * 60 - totalMinutes),
+    completionRate: denominator ? Math.round((completedActivities.length / denominator) * 100) : 0,
+    completedCount: completedActivities.length,
+    missedCount: missed,
+    plannedCount: denominator,
+    currentStreak: completionStreak(activity),
+    capacityMinutes: Math.max(0, Number(preferences.maxDailyStudyMinutes || 180) * 7 - plannedMinutes),
     subjectDistribution
   };
 }
@@ -207,7 +470,7 @@ export function weekRange(value = new Date()) {
 }
 
 function normalizeEvent(row) {
-  return { ...row, allDay: Boolean(row.allDay), editable: Boolean(row.editable) };
+  return { ...row, allDay: Boolean(row.allDay), editable: Boolean(row.editable), category: row.category || categoryForKind(row.kind), outcome: row.outcome || (row.status === "completed" ? "completed" : "planned") };
 }
 function normalizeProposal(row) {
   let operations = [];
@@ -215,6 +478,21 @@ function normalizeProposal(row) {
   const { operationsJson, ...proposal } = row;
   return { ...proposal, operations };
 }
+function categoryForKind(kind) {
+  if (kind === "study" || kind === "task") return "study";
+  if (kind === "training") return "sport";
+  if (kind === "sleep") return "sleep";
+  return "other";
+}
 function minutesBetween(start, end) {
   return Math.max(0, Math.round((Date.parse(end) - Date.parse(start)) / 60000));
+}
+function completionStreak(activity) {
+  const days = new Set(activity.filter((item) => item.outcome === "completed").map((item) => item.occurredAt.slice(0, 10)));
+  if (!days.size) return 0;
+  let cursor = new Date(); cursor.setUTCHours(0, 0, 0, 0);
+  if (!days.has(cursor.toISOString().slice(0, 10))) cursor.setUTCDate(cursor.getUTCDate() - 1);
+  let streak = 0;
+  while (days.has(cursor.toISOString().slice(0, 10))) { streak += 1; cursor.setUTCDate(cursor.getUTCDate() - 1); }
+  return streak;
 }

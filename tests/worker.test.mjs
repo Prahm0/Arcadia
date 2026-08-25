@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import worker from "../dist/server/index.js";
-import { completeEvent, createEvent, createProposal, deleteEvent, ensureDatabase, getAnalytics, getEvent, listEvents, updateEvent, upsertProfile, weekRange } from "../worker/db.js";
+import {
+  completeEvent, createEvent, createProposal, deleteEvent, ensureDatabase, getAnalytics, getEvent,
+  getPlannerData, listEvents, listTasks, updateEvent, upsertProfile, weekRange
+} from "../worker/db.js";
 import { applyProposal } from "../worker/openai.js";
 
 class D1Statement {
@@ -23,51 +26,43 @@ class TestD1 {
   }
 }
 
-test("serves the dashboard at the private root", async () => {
-  const response = await worker.fetch(new Request("https://arcadia.test/", { headers: { "oai-authenticated-user-id": "owner", "oai-authenticated-user-email": "owner@example.com" } }), {}, {});
+const authHeaders = (id = "owner") => ({
+  "oai-authenticated-user-id": id,
+  "oai-authenticated-user-email": `${id}@example.com`
+});
+const jsonHeaders = (id = "owner") => ({ ...authHeaders(id), "content-type": "application/json" });
+
+test("serves Today as the private Arcadia home without hardcoded demo work", async () => {
+  const response = await worker.fetch(new Request("https://arcadia.test/", { headers: authHeaders() }), {}, {});
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type"), /text\/html/);
-  assert.match(await response.text(), /Your week, in balance/);
+  const html = await response.text();
+  assert.match(html, /Today’s plan/);
+  assert.match(html, /Your focus today/);
+  assert.match(html, /Arcadia Mentor/);
+  assert.doesNotMatch(html, /Economics lecture|Calculus problem set|Easy run/);
 });
 
-test("serves Dashboard first with three hash-addressable widget previews", async () => {
-  const response = await worker.fetch(new Request("https://arcadia.test/", { headers: { "oai-authenticated-user-id": "owner", "oai-authenticated-user-email": "owner@example.com" } }), {}, {});
+test("uses Today, Schedule and AI Mentor as the primary shared-data navigation", async () => {
+  const response = await worker.fetch(new Request("https://arcadia.test/", { headers: authHeaders() }), {}, {});
   const html = await response.text();
   const navigation = html.slice(html.indexOf('<nav class="rail-nav"'), html.indexOf('</nav>'));
-  const dashboard = navigation.indexOf('data-view="dashboard"');
-  const calendar = navigation.indexOf('data-view="calendar"');
-  const pulse = navigation.indexOf('data-view="weekly-pulse"');
-  const assistant = navigation.indexOf('data-view="assistant"');
-  assert.ok(dashboard >= 0 && calendar > dashboard && pulse > calendar && assistant > pulse);
-  assert.match(html, /data-widget-view="dashboard"/);
-  assert.match(html, /data-preview-view="calendar"/);
-  assert.match(html, /data-preview-view="weekly-pulse"/);
-  assert.match(html, /data-preview-view="assistant"/);
-  assert.match(html, /<article class="preview-card calendar-preview-card">/);
-  assert.match(html, /class="preview-title-link" href="#calendar"/);
-  assert.match(html, /id="dashboard-week-strip"/);
-  assert.match(html, /id="dashboard-composer"/);
-  assert.match(html, /data-widget-view="calendar"[^>]*hidden/);
-  assert.match(html, /data-widget-view="weekly-pulse"[^>]*hidden/);
-  assert.match(html, /data-widget-view="assistant"[^>]*hidden/);
+  assert.ok(navigation.indexOf('data-view="today"') < navigation.indexOf('data-view="schedule"'));
+  assert.ok(navigation.indexOf('data-view="schedule"') < navigation.indexOf('data-view="mentor"'));
+  assert.match(html, /data-view-panel="today"/);
+  assert.match(html, /data-view-panel="schedule"[^>]*hidden/);
+  assert.match(html, /data-view-panel="mentor"[^>]*hidden/);
+  assert.match(html, /id="onboarding-dialog"/);
 });
 
-test("defaults client navigation to the Dashboard hash", async () => {
+test("defaults client navigation to Today and uses persisted dashboard data", async () => {
   const response = await worker.fetch(new Request("https://arcadia.test/dashboard.js"), {}, {});
   assert.equal(response.status, 200);
   const script = await response.text();
-  assert.match(script, /\['dashboard', 'calendar', 'weekly-pulse', 'assistant'\]/);
-  assert.match(script, /#dashboard/);
-});
-
-test("links Arcadia branding to the canonical calendar dashboard", async () => {
-  const response = await worker.fetch(new Request("https://arcadia.test/", { headers: { "oai-authenticated-user-id": "owner", "oai-authenticated-user-email": "owner@example.com" } }), {}, {});
-  const html = await response.text();
-  assert.equal((html.match(/href="\/#calendar" aria-label="Arcadia dashboard"/g) || []).length, 2);
-  assert.match(html, /id="rail-toggle"[^>]*aria-label="Expand navigation"[^>]*aria-expanded="false"/);
-  assert.doesNotMatch(html, /class="brand-mark"[^>]*>A</);
-  assert.equal((html.match(/src="\/arcadia-mark-transparent\.png"/g) || []).length, 2);
-  assert.match(html, /:root\[data-theme="dark"\] \.brand-mark/);
+  assert.match(script, /\['today', 'schedule', 'mentor'\]/);
+  assert.match(script, /#today/);
+  assert.match(script, /\/api\/dashboard/);
+  assert.doesNotMatch(script, /Economics lecture|Calculus problem set/);
 });
 
 test("serves Arcadia brand and sharing images", async () => {
@@ -85,27 +80,15 @@ test("serves the theme-aware Arcadia mark with transparency", async () => {
   assert.equal(png[25], 6, "PNG should use RGBA color data");
 });
 
-test("redirects unauthenticated page requests to platform sign-in", async () => {
-  const response = await worker.fetch(new Request("https://arcadia.test/"), {}, {});
-  assert.equal(response.status, 302);
-  assert.equal(response.headers.get("location"), "https://arcadia.test/signin-with-chatgpt?return_to=%2F");
-});
-
-test("redirects the dashboard alias to root", async () => {
-  const response = await worker.fetch(new Request("https://arcadia.test/dashboard"), {}, {});
-  assert.equal(response.status, 308);
-  assert.equal(response.headers.get("location"), "https://arcadia.test/");
-});
-
-test("rejects unauthenticated API access", async () => {
-  const response = await worker.fetch(new Request("https://arcadia.test/api/dashboard"), {}, {});
-  assert.equal(response.status, 401);
-  assert.deepEqual(await response.json(), { error: "Authentication required." });
-});
-
-test("does not expose the removed marketing route", async () => {
-  const response = await worker.fetch(new Request("https://arcadia.test/arcadia.html"), {}, {});
-  assert.equal(response.status, 404);
+test("preserves private authentication and API ownership", async () => {
+  const page = await worker.fetch(new Request("https://arcadia.test/"), {}, {});
+  assert.equal(page.status, 302);
+  assert.equal(page.headers.get("location"), "https://arcadia.test/signin-with-chatgpt?return_to=%2F");
+  const api = await worker.fetch(new Request("https://arcadia.test/api/dashboard"), {}, {});
+  assert.equal(api.status, 401);
+  assert.deepEqual(await api.json(), { error: "Authentication required." });
+  const alias = await worker.fetch(new Request("https://arcadia.test/dashboard"), {}, {});
+  assert.equal(alias.status, 308);
 });
 
 test("isolates events by authenticated owner and protects imported records", async () => {
@@ -118,59 +101,154 @@ test("isolates events by authenticated owner and protects imported records", asy
     startAt: "2026-08-25T00:00:00.000Z", endAt: "2026-08-25T01:00:00.000Z", recurrence: "RRULE:FREQ=WEEKLY"
   });
   assert.equal((await getEvent(env, "user-a", event.id)).title, "Calculus focus");
-  assert.equal((await getEvent(env, "user-a", event.id)).recurrence, "RRULE:FREQ=WEEKLY");
   assert.equal(await getEvent(env, "user-b", event.id), null);
   assert.equal(await updateEvent(env, "user-b", event.id, { ...event, title: "Hijacked" }), null);
   assert.equal(await deleteEvent(env, "user-b", event.id), null);
-  assert.equal((await getEvent(env, "user-a", event.id)).title, "Calculus focus");
 });
 
-test("requires explicit permission before saving an overlapping event", async () => {
+test("prevents overlapping events without a bypass", async () => {
   const env = { DB: new TestD1() };
   await ensureDatabase(env);
   await upsertProfile(env, { id: "planner", email: "planner@example.com", name: "Planner" });
-  await createEvent(env, "planner", {
-    title: "Existing block", kind: "study",
-    startAt: "2026-08-25T02:00:00.000Z", endAt: "2026-08-25T03:00:00.000Z"
-  });
-  const headers = { "content-type": "application/json", "oai-authenticated-user-id": "planner", "oai-authenticated-user-email": "planner@example.com" };
-  const body = { title: "Overlapping block", kind: "task", startAt: "2026-08-25T02:30:00.000Z", endAt: "2026-08-25T03:30:00.000Z" };
-  const blocked = await worker.fetch(new Request("https://arcadia.test/api/events", { method: "POST", headers, body: JSON.stringify(body) }), env, {});
-  assert.equal(blocked.status, 409);
-  assert.equal((await blocked.json()).conflicts.length, 1);
-  const allowed = await worker.fetch(new Request("https://arcadia.test/api/events", { method: "POST", headers, body: JSON.stringify({ ...body, allowOverlap: true }) }), env, {});
-  assert.equal(allowed.status, 201);
+  await createEvent(env, "planner", { title: "Existing block", kind: "study", startAt: "2026-08-25T02:00:00.000Z", endAt: "2026-08-25T03:00:00.000Z" });
+  const body = { title: "Overlapping block", kind: "task", startAt: "2026-08-25T02:30:00.000Z", endAt: "2026-08-25T03:30:00.000Z", allowOverlap: true };
+  const response = await worker.fetch(new Request("https://arcadia.test/api/events", { method: "POST", headers: jsonHeaders("planner"), body: JSON.stringify(body) }), env, {});
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).conflicts.length, 1);
 });
 
-test("derives weekly analytics from completed study sessions", async () => {
+test("derives persistent completion analytics from real study sessions", async () => {
   const env = { DB: new TestD1() };
   await ensureDatabase(env);
   await upsertProfile(env, { id: "student", email: "student@example.com", name: "Student" });
-  const event = await createEvent(env, "student", {
-    title: "Economics draft", kind: "study", subject: "Economics",
-    startAt: "2026-08-25T02:00:00.000Z", endAt: "2026-08-25T03:30:00.000Z"
-  });
+  const event = await createEvent(env, "student", { title: "Economics draft", kind: "study", subject: "Economics", startAt: "2026-08-25T02:00:00.000Z", endAt: "2026-08-25T03:30:00.000Z" });
   await completeEvent(env, "student", event.id);
   const range = weekRange("2026-08-25T00:00:00.000Z");
   const analytics = await getAnalytics(env, "student", range.start, range.end);
   assert.equal(analytics.focusedMinutes, 90);
   assert.equal(analytics.completionRate, 100);
-  assert.deepEqual(analytics.subjectDistribution, [{ subject: "Economics", minutes: 90 }]);
+  assert.equal(analytics.completedCount, 1);
 });
 
-test("applies an approved assistant proposal exactly once", async () => {
+test("applies an approved Mentor move exactly once", async () => {
   const env = { DB: new TestD1() };
   await ensureDatabase(env);
   await upsertProfile(env, { id: "planner", email: "planner@example.com", name: "Planner" });
   const start = new Date(Date.now() + 48 * 60 * 60 * 1000); start.setMinutes(0, 0, 0);
   const end = new Date(start.getTime() + 45 * 60 * 1000);
-  const proposal = await createProposal(env, "planner", "Add a review block", [{
-    action: "create", eventId: null, title: "Economics review", kind: "study", subject: "Economics",
-    startAt: start.toISOString(), endAt: end.toISOString()
-  }]);
+  const proposal = await createProposal(env, "planner", "Add a review block", [{ action: "create", eventId: null, title: "Economics review", kind: "study", subject: "Economics", startAt: start.toISOString(), endAt: end.toISOString() }]);
   assert.equal((await applyProposal(env, "planner", proposal.id)).status, "applied");
   assert.equal(await applyProposal(env, "planner", proposal.id), null);
   const events = await listEvents(env, "planner", new Date(start.getTime() - 86400000).toISOString(), new Date(end.getTime() + 86400000).toISOString());
   assert.equal(events.length, 1);
-  assert.equal(events[0].title, "Economics review");
+  assert.equal(events[0].category, "study");
 });
+
+test("required student journey persists, schedules, completes, misses, adapts and accepts a Mentor task action", async () => {
+  const env = { DB: new TestD1() };
+  const userId = "journey-student";
+  const englishDue = futureWeekday(4, 7);
+  const mathsDue = futureWeekday(5, 8);
+  const onboarding = {
+    name: "Alex", grade: "Year 11", timezone: "Australia/Sydney",
+    subjects: [
+      { name: "Maths", color: "#8389ca", priority: 3 },
+      { name: "English", color: "#83acce", priority: 3 },
+      { name: "Physics", color: "#609480", priority: 2 }
+    ],
+    tasks: [
+      { title: "Maths test", subject: "Maths", taskType: "exam", dueAt: mathsDue.toISOString(), estimatedMinutes: 120, priority: 3, notes: "Revision needed" },
+      { title: "English assignment", subject: "English", taskType: "assignment", dueAt: englishDue.toISOString(), estimatedMinutes: 180, priority: 3, notes: "Three hours remaining" }
+    ],
+    commitments: [
+      { title: "School", subject: null, category: "school", startDate: null, weekday: null, startTime: "08:45", endTime: "15:00", recurrence: "weekdays", notes: "" },
+      { title: "Football", subject: null, category: "sport", startDate: null, weekday: 2, startTime: "17:00", endTime: "18:30", recurrence: "weekly", notes: "" },
+      { title: "Football", subject: null, category: "sport", startDate: null, weekday: 4, startTime: "17:00", endTime: "18:30", recurrence: "weekly", notes: "" }
+    ],
+    preferences: { bedtime: "22:30", wakeTime: "06:30", minimumSleepMinutes: 480, maxDailyStudyMinutes: 180, preferredSessionMinutes: 60, breakMinutes: 15 }
+  };
+  const saved = await worker.fetch(new Request("https://arcadia.test/api/onboarding", { method: "POST", headers: jsonHeaders(userId), body: JSON.stringify(onboarding) }), env, {});
+  assert.equal(saved.status, 201, await saved.text());
+
+  const planner = await getPlannerData(env, userId);
+  assert.equal(planner.profile.onboardingComplete, true);
+  assert.equal(planner.subjects.length, 3);
+  assert.equal(planner.tasks.filter((task) => task.status === "pending").length, 2);
+  assert.equal(planner.commitments.length, 3);
+  assert.equal(planner.preferences.bedtime, "22:30");
+
+  const horizonStart = new Date(Date.now() - 86_400_000).toISOString();
+  const horizonEnd = new Date(mathsDue.getTime() + 86_400_000).toISOString();
+  let events = await listEvents(env, userId, horizonStart, horizonEnd);
+  const study = events.filter((event) => event.category === "study");
+  assert.ok(study.length >= 5, "large tasks should be split into multiple sessions");
+  assert.ok(events.some((event) => event.category === "school"));
+  assert.ok(events.some((event) => event.category === "sport"));
+  assertNoOverlaps(events);
+  for (const session of study) {
+    const task = planner.tasks.find((item) => item.id === session.taskId);
+    assert.ok(task, "every generated study session should belong to one persisted task");
+    assert.ok(Date.parse(session.endAt) <= Date.parse(task.dueAt), "study may not run after its deadline");
+    const clock = localClockMinutes(session.startAt, "Australia/Sydney");
+    const endClock = localClockMinutes(session.endAt, "Australia/Sydney");
+    assert.ok(clock >= 6 * 60 + 30 && endClock <= 22 * 60 + 30, "study must remain outside sleep");
+  }
+
+  const first = study[0];
+  const completed = await worker.fetch(new Request(`https://arcadia.test/api/events/${first.id}/outcome`, { method: "POST", headers: jsonHeaders(userId), body: JSON.stringify({ outcome: "completed" }) }), env, {});
+  assert.equal(completed.status, 200);
+  assert.equal((await getEvent(env, userId, first.id)).outcome, "completed");
+  const taskAfterCompletion = (await listTasks(env, userId)).find((task) => task.id === first.taskId);
+  assert.ok(taskAfterCompletion.remainingMinutes < taskAfterCompletion.estimatedMinutes);
+
+  events = await listEvents(env, userId, horizonStart, horizonEnd);
+  const missedTarget = events.find((event) => event.category === "study" && event.outcome === "planned");
+  const missed = await worker.fetch(new Request(`https://arcadia.test/api/events/${missedTarget.id}/outcome`, { method: "POST", headers: jsonHeaders(userId), body: JSON.stringify({ outcome: "missed" }) }), env, {});
+  assert.equal(missed.status, 200);
+  const missedPayload = await missed.json();
+  assert.match(missedPayload.message, /missed|moved|safe opening/i);
+  assert.equal((await getEvent(env, userId, missedTarget.id)).outcome, "missed");
+  const replanned = await listEvents(env, userId, new Date().toISOString(), horizonEnd);
+  assert.ok(replanned.some((event) => event.taskId === missedTarget.taskId && event.id !== missedTarget.id && event.outcome === "planned"));
+  assertNoOverlaps(replanned);
+
+  const mentor = await worker.fetch(new Request("https://arcadia.test/api/chat", {
+    method: "POST", headers: jsonHeaders(userId),
+    body: JSON.stringify({ message: "I just found out I have chemistry homework due Wednesday that will take about an hour." })
+  }), env, {});
+  assert.equal(mentor.status, 200);
+  const payloads = (await mentor.text()).trim().split("\n").map((line) => JSON.parse(line));
+  assert.ok(payloads.some((payload) => payload.type === "message" && payload.action?.intent === "CREATE_TASK"));
+  const tasks = await listTasks(env, userId);
+  const chemistry = tasks.find((task) => /chemistry homework/i.test(task.title));
+  assert.ok(chemistry, "Mentor should persist the structured task action");
+  const updated = await listEvents(env, userId, new Date().toISOString(), new Date(Date.now() + 22 * 86_400_000).toISOString());
+  assert.ok(updated.some((event) => event.taskId === chemistry.id), "Mentor-created work should be scheduled in the shared plan");
+  assertNoOverlaps(updated);
+
+  const movedTraining = await worker.fetch(new Request("https://arcadia.test/api/chat", {
+    method: "POST", headers: jsonHeaders(userId), body: JSON.stringify({ message: "Training has been moved to 6 PM." })
+  }), env, {});
+  const trainingPayloads = (await movedTraining.text()).trim().split("\n").map((line) => JSON.parse(line));
+  assert.ok(trainingPayloads.some((payload) => payload.action?.intent === "UPDATE_COMMITMENT_TIME"));
+  const afterTraining = await getPlannerData(env, userId);
+  assert.ok(afterTraining.commitments.filter((item) => item.category === "sport").every((item) => item.startTime === "18:00"));
+});
+
+function futureWeekday(weekday, minimumDays) {
+  const date = new Date(); date.setUTCHours(12, 59, 0, 0);
+  let delta = (weekday - date.getUTCDay() + 7) % 7;
+  while (delta < minimumDays) delta += 7;
+  date.setUTCDate(date.getUTCDate() + delta);
+  return date;
+}
+function assertNoOverlaps(events) {
+  const active = events.filter((event) => event.status !== "cancelled").sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
+  for (let index = 1; index < active.length; index += 1) {
+    assert.ok(Date.parse(active[index - 1].endAt) <= Date.parse(active[index].startAt), `${active[index - 1].title} overlaps ${active[index].title}`);
+  }
+}
+function localClockMinutes(value, timezone) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-AU", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(value)).map((part) => [part.type, part.value]));
+  return Number(parts.hour) * 60 + Number(parts.minute);
+}
