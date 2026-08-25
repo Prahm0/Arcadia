@@ -6,7 +6,7 @@ const state = {
   editingEvent: null,
   loading: false,
   eventSaving: false,
-  activeView: 'calendar',
+  activeView: 'dashboard',
   focusViewAfterHashChange: false
 };
 
@@ -18,11 +18,16 @@ const elements = {
   workspace: document.querySelector('.workspace'),
   views: [...document.querySelectorAll('[data-widget-view]')],
   viewButtons: [...document.querySelectorAll('[data-view]')],
+  previewLinks: [...document.querySelectorAll('[data-preview-view]')],
   calendarOnly: [...document.querySelectorAll('[data-calendar-only]')],
   todayLabel: document.querySelector('#today-label'),
   greeting: document.querySelector('#greeting'),
   avatar: document.querySelector('#avatar'),
   weekSummary: document.querySelector('#week-summary'),
+  calendarPreviewKicker: document.querySelector('#calendar-preview-kicker'),
+  calendarPreview: document.querySelector('#calendar-preview'),
+  pulsePreview: document.querySelector('#pulse-preview'),
+  assistantPreview: document.querySelector('#assistant-preview'),
   weekStrip: document.querySelector('#week-strip'),
   agenda: document.querySelector('#agenda'),
   analytics: document.querySelector('#analytics-body'),
@@ -77,6 +82,7 @@ function bindControls() {
       state.focusViewAfterHashChange = false;
     } else location.hash = hash;
   }));
+  elements.previewLinks.forEach((link) => link.addEventListener('click', () => { state.focusViewAfterHashChange = true; }));
   document.querySelector('.rail-nav').addEventListener('keydown', (event) => {
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
     const current = elements.viewButtons.indexOf(document.activeElement);
@@ -115,13 +121,13 @@ function bindControls() {
 
 function viewFromHash() {
   const requested = location.hash.slice(1);
-  if (['calendar', 'weekly-pulse', 'assistant'].includes(requested)) return requested;
-  history.replaceState({}, '', `${location.pathname}${location.search}#calendar`);
-  return 'calendar';
+  if (['dashboard', 'calendar', 'weekly-pulse', 'assistant'].includes(requested)) return requested;
+  history.replaceState({}, '', `${location.pathname}${location.search}#dashboard`);
+  return 'dashboard';
 }
 
 function activateView(view, { focus = false } = {}) {
-  const activeView = ['calendar', 'weekly-pulse', 'assistant'].includes(view) ? view : 'calendar';
+  const activeView = ['dashboard', 'calendar', 'weekly-pulse', 'assistant'].includes(view) ? view : 'dashboard';
   state.activeView = activeView;
   elements.workspace.dataset.view = activeView;
   for (const panel of elements.views) panel.hidden = panel.dataset.widgetView !== activeView;
@@ -131,7 +137,8 @@ function activateView(view, { focus = false } = {}) {
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   }
   for (const element of elements.calendarOnly) element.hidden = activeView !== 'calendar';
-  document.title = `${activeView === 'calendar' ? 'Calendar' : activeView === 'weekly-pulse' ? 'Weekly Pulse' : 'AI Assistant'} · Arcadia`;
+  const viewTitle = { dashboard: 'Dashboard', calendar: 'Calendar', 'weekly-pulse': 'Weekly Pulse', assistant: 'AI Assistant' }[activeView];
+  document.title = `${viewTitle} · Arcadia`;
   if (focus) document.querySelector(`[data-widget-view="${activeView}"] .panel-title`)?.focus({ preventScroll: true });
 }
 
@@ -186,6 +193,10 @@ async function loadDashboard() {
     renderDashboard();
   } catch (error) {
     elements.agenda.innerHTML = emptyState('Arcadia is unavailable', error.message);
+    const previewError = `<div class="preview-empty">${escapeHtml(error.message)}</div>`;
+    elements.calendarPreview.innerHTML = previewError;
+    elements.pulsePreview.innerHTML = previewError;
+    elements.assistantPreview.innerHTML = previewError;
     toast(error.message);
   } finally { setLoading(false); }
 }
@@ -199,12 +210,40 @@ function renderDashboard() {
   elements.avatar.textContent = initials || 'A';
   elements.avatar.setAttribute('aria-label', `Signed in as ${user.name}`);
   elements.weekSummary.textContent = `${formatRange(range)} · ${formatDuration(analytics.plannedMinutes)} planned`;
+  renderDashboardPreviews(events, analytics, assistant, range);
   renderContext(events, analytics);
   renderWeek(range);
   renderAgenda(events);
   renderAnalytics(analytics);
   renderGoogle(google);
   renderMessages(assistant);
+}
+
+function renderDashboardPreviews(events, analytics, assistant, range) {
+  elements.calendarPreviewKicker.textContent = formatRange(range);
+  const now = Date.now();
+  const upcoming = events
+    .filter((event) => Date.parse(event.endAt) > now && event.status !== 'cancelled')
+    .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt))
+    .slice(0, 3);
+  if (!upcoming.length) {
+    elements.calendarPreview.innerHTML = '<div class="preview-empty">Your calendar is clear for the rest of this week.</div>';
+  } else {
+    elements.calendarPreview.innerHTML = `<div class="preview-list">${upcoming.map((event) => {
+      const eventDate = new Date(event.startAt);
+      const when = event.allDay ? `${eventDate.toLocaleDateString([], { weekday: 'short' })} · All day` : `${eventDate.toLocaleDateString([], { weekday: 'short' })} · ${formatTime(event.startAt)}`;
+      const detail = event.location || event.subject || formatDuration(minutesBetween(event.startAt, event.endAt));
+      return `<div class="preview-event${event.source === 'google' ? ' google' : ''}"><span class="preview-time">${when}</span><span class="preview-bar"></span><span><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(detail)}</span></span></div>`;
+    }).join('')}</div>`;
+  }
+
+  const topSubject = analytics.subjectDistribution?.[0];
+  elements.pulsePreview.innerHTML = `<div class="preview-metrics"><div class="preview-metric"><span>Focused</span><strong>${formatDuration(analytics.focusedMinutes)}</strong></div><div class="preview-metric"><span>Complete</span><strong>${Math.max(0, Math.min(100, analytics.completionRate))}%</strong></div><div class="preview-metric"><span>Capacity</span><strong>${capacityLabel(analytics.capacityMinutes)}</strong></div></div><p class="preview-detail">${topSubject ? `${escapeHtml(topSubject.subject)} leads your study mix with ${formatDuration(topSubject.minutes)} focused.` : 'Complete a study block to start building your study mix.'}</p>`;
+
+  const latestAssistant = [...(assistant.messages || [])].reverse().find((message) => message.role === 'assistant');
+  const fallback = assistant.configured ? 'Your calendar is ready. Ask me what to focus on next.' : 'The assistant is ready once OpenAI setup is complete.';
+  const pending = assistant.proposals?.length || 0;
+  elements.assistantPreview.innerHTML = `<p class="preview-message">${escapeHtml(latestAssistant?.content || fallback)}</p><div class="preview-status"><span>${pending ? `${pending} schedule proposal${pending === 1 ? '' : 's'} waiting` : 'No pending schedule changes'}</span><strong>${assistant.configured ? 'Ready' : 'Setup required'}</strong></div>`;
 }
 
 function renderWeek(range) {

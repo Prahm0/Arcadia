@@ -30,16 +30,30 @@ test("serves the dashboard at the private root", async () => {
   assert.match(await response.text(), /Your week, in balance/);
 });
 
-test("serves the three hash-addressable widget views in sidebar order", async () => {
+test("serves Dashboard first with three hash-addressable widget previews", async () => {
   const response = await worker.fetch(new Request("https://arcadia.test/", { headers: { "oai-authenticated-user-id": "owner", "oai-authenticated-user-email": "owner@example.com" } }), {}, {});
   const html = await response.text();
-  const calendar = html.indexOf('data-view="calendar"');
-  const pulse = html.indexOf('data-view="weekly-pulse"');
-  const assistant = html.indexOf('data-view="assistant"');
-  assert.ok(calendar >= 0 && pulse > calendar && assistant > pulse);
-  assert.match(html, /data-widget-view="calendar"/);
+  const navigation = html.slice(html.indexOf('<nav class="rail-nav"'), html.indexOf('</nav>'));
+  const dashboard = navigation.indexOf('data-view="dashboard"');
+  const calendar = navigation.indexOf('data-view="calendar"');
+  const pulse = navigation.indexOf('data-view="weekly-pulse"');
+  const assistant = navigation.indexOf('data-view="assistant"');
+  assert.ok(dashboard >= 0 && calendar > dashboard && pulse > calendar && assistant > pulse);
+  assert.match(html, /data-widget-view="dashboard"/);
+  assert.match(html, /data-preview-view="calendar"/);
+  assert.match(html, /data-preview-view="weekly-pulse"/);
+  assert.match(html, /data-preview-view="assistant"/);
+  assert.match(html, /data-widget-view="calendar"[^>]*hidden/);
   assert.match(html, /data-widget-view="weekly-pulse"[^>]*hidden/);
   assert.match(html, /data-widget-view="assistant"[^>]*hidden/);
+});
+
+test("defaults client navigation to the Dashboard hash", async () => {
+  const response = await worker.fetch(new Request("https://arcadia.test/dashboard.js"), {}, {});
+  assert.equal(response.status, 200);
+  const script = await response.text();
+  assert.match(script, /\['dashboard', 'calendar', 'weekly-pulse', 'assistant'\]/);
+  assert.match(script, /#dashboard/);
 });
 
 test("redirects unauthenticated page requests to platform sign-in", async () => {
