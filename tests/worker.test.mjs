@@ -30,6 +30,18 @@ test("serves the dashboard at the private root", async () => {
   assert.match(await response.text(), /Your week, in balance/);
 });
 
+test("serves the three hash-addressable widget views in sidebar order", async () => {
+  const response = await worker.fetch(new Request("https://arcadia.test/", { headers: { "oai-authenticated-user-id": "owner", "oai-authenticated-user-email": "owner@example.com" } }), {}, {});
+  const html = await response.text();
+  const calendar = html.indexOf('data-view="calendar"');
+  const pulse = html.indexOf('data-view="weekly-pulse"');
+  const assistant = html.indexOf('data-view="assistant"');
+  assert.ok(calendar >= 0 && pulse > calendar && assistant > pulse);
+  assert.match(html, /data-widget-view="calendar"/);
+  assert.match(html, /data-widget-view="weekly-pulse"[^>]*hidden/);
+  assert.match(html, /data-widget-view="assistant"[^>]*hidden/);
+});
+
 test("redirects unauthenticated page requests to platform sign-in", async () => {
   const response = await worker.fetch(new Request("https://arcadia.test/"), {}, {});
   assert.equal(response.status, 302);
@@ -68,6 +80,23 @@ test("isolates events by authenticated owner and protects imported records", asy
   assert.equal(await updateEvent(env, "user-b", event.id, { ...event, title: "Hijacked" }), null);
   assert.equal(await deleteEvent(env, "user-b", event.id), null);
   assert.equal((await getEvent(env, "user-a", event.id)).title, "Calculus focus");
+});
+
+test("requires explicit permission before saving an overlapping event", async () => {
+  const env = { DB: new TestD1() };
+  await ensureDatabase(env);
+  await upsertProfile(env, { id: "planner", email: "planner@example.com", name: "Planner" });
+  await createEvent(env, "planner", {
+    title: "Existing block", kind: "study",
+    startAt: "2026-08-25T02:00:00.000Z", endAt: "2026-08-25T03:00:00.000Z"
+  });
+  const headers = { "content-type": "application/json", "oai-authenticated-user-id": "planner", "oai-authenticated-user-email": "planner@example.com" };
+  const body = { title: "Overlapping block", kind: "task", startAt: "2026-08-25T02:30:00.000Z", endAt: "2026-08-25T03:30:00.000Z" };
+  const blocked = await worker.fetch(new Request("https://arcadia.test/api/events", { method: "POST", headers, body: JSON.stringify(body) }), env, {});
+  assert.equal(blocked.status, 409);
+  assert.equal((await blocked.json()).conflicts.length, 1);
+  const allowed = await worker.fetch(new Request("https://arcadia.test/api/events", { method: "POST", headers, body: JSON.stringify({ ...body, allowOverlap: true }) }), env, {});
+  assert.equal(allowed.status, 201);
 });
 
 test("derives weekly analytics from completed study sessions", async () => {

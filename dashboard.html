@@ -144,13 +144,12 @@
       .context-value { display: block; overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
       .context-value.accent { color: var(--accent-dark); }
 
-      .dashboard-grid {
-        display: grid; grid-template-columns: minmax(520px, .92fr) minmax(420px, 1.08fr);
-        grid-template-rows: minmax(230px, .72fr) minmax(410px, 1.28fr); gap: 18px;
-        min-height: calc(100vh - 219px);
-      }
+      [hidden] { display: none !important; }
+      .dashboard-grid { min-height: calc(100vh - 219px); }
+      .widget-view { min-height: calc(100vh - 219px); }
+      .workspace:not([data-view="calendar"]) .widget-view { min-height: calc(100vh - 145px); }
       .panel { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 24px; background: var(--panel); box-shadow: var(--shadow); }
-      .calendar-panel { grid-row: 1 / span 2; display: flex; flex-direction: column; }
+      .calendar-panel { display: flex; flex-direction: column; }
       .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 22px 24px 18px; border-bottom: 1px solid var(--divider); }
       .panel-title { margin: 0; font-size: 17px; letter-spacing: -.025em; }
       .panel-subtitle { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
@@ -245,6 +244,11 @@
       .field input, .field select, .field textarea { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-soft); color: var(--ink); font: inherit; font-size: 12px; }
       .field textarea { min-height: 75px; resize: vertical; }
       .form-error { min-height: 18px; margin: 12px 0 0; color: var(--danger); font-size: 11px; }
+      .conflict-panel { margin: 0 0 14px; padding: 13px; border: 1px solid var(--amber); border-radius: 12px; background: var(--amber-soft); }
+      .conflict-panel strong { display: block; margin-bottom: 6px; font-size: 12px; }
+      .conflict-panel p { margin: 0 0 10px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+      .conflict-list { margin: 0 0 12px; padding-left: 18px; color: var(--ink); font-size: 10px; line-height: 1.6; }
+      .conflict-actions { display: flex; flex-wrap: wrap; gap: 8px; }
       .modal-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 4px; padding-top: 16px; border-top: 1px solid var(--divider); }
       .button.danger { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
       .connection-card { padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-soft); }
@@ -253,10 +257,10 @@
       .toast { position: fixed; right: 22px; bottom: 22px; z-index: 20; max-width: 360px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--panel); box-shadow: var(--shadow); font-size: 12px; transform: translateY(20px); opacity: 0; pointer-events: none; transition: 180ms ease; }
       .toast.visible { transform: translateY(0); opacity: 1; }
       .loading .dashboard-grid { opacity: .58; pointer-events: none; }
+      .event-form[aria-busy="true"] { opacity: .72; }
 
       @media (max-width: 1080px) {
-        .dashboard-grid { grid-template-columns: 1fr; grid-template-rows: auto; }
-        .calendar-panel { grid-row: auto; min-height: 600px; }
+        .calendar-panel { min-height: 600px; }
         .analytics-panel { min-height: 260px; }
         .chat-panel { min-height: 480px; }
       }
@@ -272,8 +276,8 @@
         .workspace { padding: 20px 14px; }
         .topbar { align-items: flex-start; }
         .status-pill { display: none; }
-        .button.primary { padding: 0 11px; font-size: 0; }
-        .button.primary::after { content: "+"; font-size: 20px; }
+        #add-event-button { width: 42px; padding: 0; font-size: 0; }
+        #add-event-button::after { content: "+"; font-size: 20px; }
         .context-strip { grid-template-columns: 1fr 1fr; }
         .panel { border-radius: 19px; box-shadow: 0 8px 24px rgba(23,23,25,.05); }
         .panel-head { padding: 18px; }
@@ -296,9 +300,9 @@
       <aside class="rail" aria-label="Arcadia navigation">
         <button class="brand-mark" id="rail-toggle" type="button" aria-label="Expand navigation" aria-expanded="false">A</button>
         <nav class="rail-nav" aria-label="Primary">
-          <button class="rail-button active" type="button" data-target="top" aria-label="Dashboard" aria-current="page"><span class="rail-icon">⌂</span><span class="rail-label">Dashboard</span></button>
-          <button class="rail-button" type="button" data-target="calendar" aria-label="Calendar"><span class="rail-icon">□</span><span class="rail-label">Calendar</span></button>
-          <button class="rail-button" type="button" data-target="analytics" aria-label="Analytics"><span class="rail-icon">↗</span><span class="rail-label">Analytics</span></button>
+          <button class="rail-button active" type="button" data-view="calendar" aria-label="Calendar" aria-current="page"><span class="rail-icon">□</span><span class="rail-label">Calendar</span></button>
+          <button class="rail-button" type="button" data-view="weekly-pulse" aria-label="Weekly Pulse"><span class="rail-icon">↗</span><span class="rail-label">Weekly Pulse</span></button>
+          <button class="rail-button" type="button" data-view="assistant" aria-label="AI Assistant"><span class="rail-icon">✦</span><span class="rail-label">AI Assistant</span></button>
           <button class="rail-button" id="settings-button" type="button" aria-label="Settings"><span class="rail-icon">⚙</span><span class="rail-label">Settings</span></button>
         </nav>
         <div class="rail-spacer"></div>
@@ -313,22 +317,22 @@
           </div>
           <div class="top-actions">
             <button class="icon-button" id="theme-toggle" type="button" aria-label="Use dark mode" aria-pressed="false">◐</button>
-            <button class="status-pill" id="google-status" type="button"><span class="status-dot"></span><span>Google Calendar</span></button>
-            <button class="button primary" id="add-event-button" type="button">Add to plan</button>
+            <button class="status-pill" id="google-status" type="button" data-calendar-only><span class="status-dot"></span><span>Google Calendar</span></button>
+            <button class="button primary" id="add-event-button" type="button" data-calendar-only>Add to plan</button>
           </div>
         </header>
 
-        <section class="context-strip" aria-label="Today at a glance">
+        <section class="context-strip" aria-label="Today at a glance" data-calendar-only>
           <div class="context-item"><span class="context-label">Right now</span><strong class="context-value accent" id="context-now">Finding your next opening…</strong></div>
           <div class="context-item"><span class="context-label">Up next</span><strong class="context-value" id="context-next">Reviewing your plan…</strong></div>
           <div class="context-item"><span class="context-label">Weekly load</span><strong class="context-value" id="context-load">Calculating capacity…</strong></div>
           <div class="context-item"><span class="context-label">Recovery</span><strong class="context-value" id="context-recovery">Sleep stays visible</strong></div>
         </section>
 
-        <section class="dashboard-grid" aria-label="Dashboard overview">
-          <article class="panel calendar-panel" id="calendar" aria-labelledby="calendar-title">
+        <section class="dashboard-grid" aria-label="Arcadia workspace">
+          <article class="panel calendar-panel widget-view" id="calendar" data-widget-view="calendar" aria-labelledby="calendar-title">
             <header class="panel-head">
-              <div><h2 class="panel-title" id="calendar-title">Calendar</h2><p class="panel-subtitle" id="week-summary">Loading calendar…</p></div>
+              <div><h2 class="panel-title" id="calendar-title" tabindex="-1">Calendar</h2><p class="panel-subtitle" id="week-summary">Loading calendar…</p></div>
               <div class="panel-actions"><button class="icon-button" id="previous-week" type="button" aria-label="Previous week">←</button><button class="icon-button" id="next-week" type="button" aria-label="Next week">→</button></div>
             </header>
             <div class="week-strip" id="week-strip" role="group" aria-label="Choose a day">
@@ -361,8 +365,8 @@
             </div>
           </article>
 
-          <article class="panel analytics-panel" id="analytics" aria-labelledby="analytics-title">
-            <header class="panel-head"><div><h2 class="panel-title" id="analytics-title">Weekly pulse</h2><p class="panel-subtitle">Compared with last week</p></div><button class="icon-button" type="button" aria-label="Open analytics">↗</button></header>
+          <article class="panel analytics-panel widget-view" id="weekly-pulse" data-widget-view="weekly-pulse" aria-labelledby="analytics-title" hidden>
+            <header class="panel-head"><div><h2 class="panel-title" id="analytics-title" tabindex="-1">Weekly pulse</h2><p class="panel-subtitle">Compared with last week</p></div></header>
             <div class="analytics-body" id="analytics-body">
               <div class="metric"><span class="metric-label">Focused time</span><strong class="metric-value">6h 40</strong><span class="metric-note">↑ 48 min</span><div class="mini-bars" aria-hidden="true"><span style="height:34%"></span><span style="height:55%"></span><span style="height:44%"></span><span style="height:76%"></span><span style="height:92%"></span></div></div>
               <div class="metric"><span class="metric-label">Completion</span><strong class="metric-value">72%</strong><span class="metric-note">9 of 12 blocks</span><div class="ring" role="img" aria-label="72 percent complete"></div></div>
@@ -371,8 +375,8 @@
             <div class="subject-breakdown" id="subject-breakdown"><strong>Study mix</strong><span class="subject-name">Waiting for your first completed block</span><span class="subject-track"><span class="subject-fill" style="width:0"></span></span><span class="subject-minutes">0m</span></div>
           </article>
 
-          <article class="panel chat-panel" aria-labelledby="assistant-title">
-            <header class="panel-head"><div><h2 class="panel-title" id="assistant-title">Arcadia assistant</h2><p class="panel-subtitle">Plan with your real capacity</p></div><span class="assistant-state">Ready</span></header>
+          <article class="panel chat-panel widget-view" id="assistant" data-widget-view="assistant" aria-labelledby="assistant-title" hidden>
+            <header class="panel-head"><div><h2 class="panel-title" id="assistant-title" tabindex="-1">Arcadia assistant</h2><p class="panel-subtitle">Plan with your real capacity</p></div><span class="assistant-state">Ready</span></header>
             <div class="messages" id="messages" aria-live="polite">
               <div class="message assistant">You have a clear 90-minute window after lunch tomorrow. Want me to use it for the economics draft, or protect it as recovery time?</div>
               <div class="message user">Move the draft forward, but keep tonight light.</div>
@@ -403,7 +407,8 @@
           <div class="field wide"><label for="event-description">Notes</label><textarea id="event-description" maxlength="1000" placeholder="Anything Arcadia should keep in mind"></textarea></div>
         </div>
         <p class="form-error" id="event-error" aria-live="polite"></p>
-        <div class="modal-actions"><div class="top-actions"><button class="button danger" id="delete-event-button" type="button" hidden>Delete</button><button class="button" id="complete-event-button" type="button" hidden>Mark complete</button></div><span></span><button class="button primary" type="submit">Save to plan</button></div>
+        <div class="conflict-panel" id="event-conflicts" role="alert" hidden></div>
+        <div class="modal-actions"><div class="top-actions"><button class="button danger" id="delete-event-button" type="button" hidden>Delete event</button><button class="button" id="complete-event-button" type="button" hidden>Mark complete</button></div><span></span><button class="button primary" id="save-event-button" type="submit">Save to plan</button></div>
       </form>
     </dialog>
 

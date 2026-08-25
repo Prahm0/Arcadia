@@ -4,7 +4,10 @@ const state = {
   selectedDate: localDateKey(new Date()),
   calendarFilter: 'all',
   editingEvent: null,
-  loading: false
+  loading: false,
+  eventSaving: false,
+  activeView: 'calendar',
+  focusViewAfterHashChange: false
 };
 
 const initialTheme = getPreferredTheme();
@@ -13,6 +16,9 @@ document.documentElement.dataset.theme = initialTheme;
 const elements = {
   shell: document.querySelector('.app-shell'),
   workspace: document.querySelector('.workspace'),
+  views: [...document.querySelectorAll('[data-widget-view]')],
+  viewButtons: [...document.querySelectorAll('[data-view]')],
+  calendarOnly: [...document.querySelectorAll('[data-calendar-only]')],
   todayLabel: document.querySelector('#today-label'),
   greeting: document.querySelector('#greeting'),
   avatar: document.querySelector('#avatar'),
@@ -34,6 +40,8 @@ const elements = {
   send: document.querySelector('#send-button'),
   eventDialog: document.querySelector('#event-dialog'),
   eventForm: document.querySelector('#event-form'),
+  eventConflicts: document.querySelector('#event-conflicts'),
+  saveEventButton: document.querySelector('#save-event-button'),
   settingsDialog: document.querySelector('#settings-dialog'),
   googleConnect: document.querySelector('#google-connect'),
   googleDisconnect: document.querySelector('#google-disconnect'),
@@ -46,6 +54,11 @@ loadDashboard();
 
 function bindControls() {
   updateThemeToggle();
+  activateView(viewFromHash());
+  window.addEventListener('hashchange', () => {
+    activateView(viewFromHash(), { focus: state.focusViewAfterHashChange });
+    state.focusViewAfterHashChange = false;
+  });
   document.querySelector('#theme-toggle').addEventListener('click', () => {
     const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = theme;
@@ -56,9 +69,22 @@ function bindControls() {
     const open = elements.shell.classList.toggle('rail-open');
     document.querySelector('#rail-toggle').setAttribute('aria-expanded', String(open));
   });
-  document.querySelectorAll('[data-target]').forEach((button) => button.addEventListener('click', () => {
-    document.querySelector(`#${button.dataset.target}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  elements.viewButtons.forEach((button) => button.addEventListener('click', () => {
+    const hash = `#${button.dataset.view}`;
+    state.focusViewAfterHashChange = true;
+    if (location.hash === hash) {
+      activateView(button.dataset.view, { focus: true });
+      state.focusViewAfterHashChange = false;
+    } else location.hash = hash;
   }));
+  document.querySelector('.rail-nav').addEventListener('keydown', (event) => {
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    const current = elements.viewButtons.indexOf(document.activeElement);
+    if (current < 0) return;
+    event.preventDefault();
+    const direction = ['ArrowDown', 'ArrowRight'].includes(event.key) ? 1 : -1;
+    elements.viewButtons[(current + direction + elements.viewButtons.length) % elements.viewButtons.length].click();
+  });
   document.querySelector('#settings-button').addEventListener('click', () => elements.settingsDialog.showModal());
   document.querySelector('#add-event-button').addEventListener('click', () => openEventDialog());
   elements.googleStatus.addEventListener('click', () => elements.settingsDialog.showModal());
@@ -83,8 +109,30 @@ function bindControls() {
   elements.googleConnect.addEventListener('click', handleGoogleAction);
   elements.googleDisconnect.addEventListener('click', disconnectGoogle);
   const params = new URLSearchParams(location.search);
-  if (params.get('google') === 'connected') { toast('Google Calendar connected.'); history.replaceState({}, '', '/'); }
-  if (params.get('google') === 'denied') { toast('Google Calendar connection was cancelled.'); history.replaceState({}, '', '/'); }
+  if (params.get('google') === 'connected') { toast('Google Calendar connected.'); history.replaceState({}, '', `${location.pathname}#calendar`); }
+  if (params.get('google') === 'denied') { toast('Google Calendar connection was cancelled.'); history.replaceState({}, '', `${location.pathname}#calendar`); }
+}
+
+function viewFromHash() {
+  const requested = location.hash.slice(1);
+  if (['calendar', 'weekly-pulse', 'assistant'].includes(requested)) return requested;
+  history.replaceState({}, '', `${location.pathname}${location.search}#calendar`);
+  return 'calendar';
+}
+
+function activateView(view, { focus = false } = {}) {
+  const activeView = ['calendar', 'weekly-pulse', 'assistant'].includes(view) ? view : 'calendar';
+  state.activeView = activeView;
+  elements.workspace.dataset.view = activeView;
+  for (const panel of elements.views) panel.hidden = panel.dataset.widgetView !== activeView;
+  for (const button of elements.viewButtons) {
+    const active = button.dataset.view === activeView;
+    button.classList.toggle('active', active);
+    if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
+  }
+  for (const element of elements.calendarOnly) element.hidden = activeView !== 'calendar';
+  document.title = `${activeView === 'calendar' ? 'Calendar' : activeView === 'weekly-pulse' ? 'Weekly Pulse' : 'AI Assistant'} · Arcadia`;
+  if (focus) document.querySelector(`[data-widget-view="${activeView}"] .panel-title`)?.focus({ preventScroll: true });
 }
 
 function getPreferredTheme() {
@@ -169,6 +217,7 @@ function renderWeek(range) {
     button.className = `day${key === state.selectedDate ? ' active' : ''}`;
     button.type = 'button'; button.dataset.date = key;
     button.setAttribute('aria-pressed', String(key === state.selectedDate));
+    if (key === state.selectedDate) button.setAttribute('aria-current', 'date');
     button.innerHTML = `<span>${date.toLocaleDateString(undefined, { weekday: 'short' })}</span><strong>${date.getDate()}</strong>`;
     button.addEventListener('click', () => { state.selectedDate = key; renderWeek(range); renderAgenda(state.data.events); });
     elements.weekStrip.append(button);
@@ -198,7 +247,9 @@ function eventRow(event) {
   button.type = 'button';
   button.className = `event ${event.source === 'google' ? 'google' : event.kind}${event.status === 'completed' ? ' completed' : ''}`;
   button.innerHTML = `<span class="event-time">${event.allDay ? 'All day' : formatTime(event.startAt)}</span><span class="event-bar"></span><div class="event-copy"><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(event.location || event.subject || formatDuration(minutesBetween(event.startAt, event.endAt)))}</span></div><span class="event-badge">${event.source === 'google' ? 'Google' : event.status === 'completed' ? 'Done' : capitalise(event.kind)}</span>`;
-  button.addEventListener('click', () => event.source === 'google' ? toast('Google events are read-only in Arcadia.') : openEventDialog(event));
+  button.addEventListener('click', () => event.source === 'google'
+    ? toast(`${event.title} comes from Google Calendar and is read-only in Arcadia.`)
+    : openEventDialog(event));
   return button;
 }
 
@@ -303,6 +354,10 @@ function openEventDialog(event = null) {
   document.querySelector('#event-start').value = localDateTimeValue(start);
   document.querySelector('#event-end').value = localDateTimeValue(end);
   document.querySelector('#event-error').textContent = '';
+  elements.eventConflicts.hidden = true;
+  elements.eventConflicts.replaceChildren();
+  elements.saveEventButton.dataset.idleLabel = event ? 'Save changes' : 'Save to plan';
+  elements.saveEventButton.textContent = elements.saveEventButton.dataset.idleLabel;
   document.querySelector('#delete-event-button').hidden = !event;
   const completeButton = document.querySelector('#complete-event-button');
   completeButton.hidden = !event; completeButton.textContent = event?.status === 'completed' ? 'Mark planned' : 'Mark complete';
@@ -312,6 +367,7 @@ function openEventDialog(event = null) {
 
 async function saveEvent(event) {
   event.preventDefault();
+  if (state.eventSaving) return;
   const id = document.querySelector('#event-id').value;
   const allDay = document.querySelector('#event-all-day').checked;
   const startValue = document.querySelector('#event-start').value;
@@ -330,22 +386,58 @@ async function saveEvent(event) {
     startAt: allDay ? allDayStart.toISOString() : new Date(startValue).toISOString(),
     endAt: allDay ? allDayEnd.toISOString() : new Date(endValue).toISOString()
   };
+  await persistEvent(id, body);
+}
+
+async function persistEvent(id, body, allowOverlap = false) {
+  setEventFormBusy(true);
+  document.querySelector('#event-error').textContent = '';
+  elements.eventConflicts.hidden = true;
   try {
-    await api(id ? `/api/events/${encodeURIComponent(id)}` : '/api/events', { method: id ? 'PATCH' : 'POST', body: JSON.stringify(body) });
-    elements.eventDialog.close(); toast(id ? 'Plan item updated.' : 'Added to your plan.'); await loadDashboard();
-  } catch (error) { document.querySelector('#event-error').textContent = error.message; }
+    await api(id ? `/api/events/${encodeURIComponent(id)}` : '/api/events', {
+      method: id ? 'PATCH' : 'POST', body: JSON.stringify({ ...body, allowOverlap })
+    });
+    elements.eventDialog.close();
+    toast(id ? 'Plan item updated.' : 'Added to your plan.');
+    await loadDashboard();
+  } catch (error) {
+    if (error.status === 409 && error.data?.conflicts?.length) showEventConflicts(id, body, error.data.conflicts);
+    else document.querySelector('#event-error').textContent = error.message;
+  } finally { setEventFormBusy(false); }
+}
+
+function showEventConflicts(id, body, conflicts) {
+  elements.eventConflicts.innerHTML = `<strong>This time overlaps your plan</strong><p>Choose another time, or save it anyway if the overlap is intentional.</p><ul class="conflict-list">${conflicts.map((conflict) => `<li>${escapeHtml(conflict.title)} · ${formatTime(conflict.startAt)}–${formatTime(conflict.endAt)}</li>`).join('')}</ul><div class="conflict-actions"><button class="button" type="button" data-conflict-action="edit">Choose another time</button><button class="button primary" type="button" data-conflict-action="save">Save anyway</button></div>`;
+  elements.eventConflicts.hidden = false;
+  elements.eventConflicts.querySelector('[data-conflict-action="edit"]').addEventListener('click', () => {
+    elements.eventConflicts.hidden = true;
+    document.querySelector('#event-start').focus();
+  });
+  elements.eventConflicts.querySelector('[data-conflict-action="save"]').addEventListener('click', () => persistEvent(id, body, true));
+}
+
+function setEventFormBusy(busy) {
+  state.eventSaving = busy;
+  elements.eventForm.setAttribute('aria-busy', String(busy));
+  elements.eventForm.querySelectorAll('button, input, select, textarea').forEach((control) => { control.disabled = busy; });
+  elements.saveEventButton.textContent = busy ? 'Saving…' : (elements.saveEventButton.dataset.idleLabel || 'Save to plan');
 }
 
 async function removeEvent() {
-  const id = document.querySelector('#event-id').value; if (!id) return;
+  const id = document.querySelector('#event-id').value; if (!id || state.eventSaving) return;
+  if (!window.confirm(`Delete “${document.querySelector('#event-title').value || 'this event'}”? This cannot be undone.`)) return;
+  setEventFormBusy(true);
   try { await api(`/api/events/${encodeURIComponent(id)}`, { method: 'DELETE' }); elements.eventDialog.close(); toast('Removed from your plan.'); await loadDashboard(); }
   catch (error) { document.querySelector('#event-error').textContent = error.message; }
+  finally { setEventFormBusy(false); }
 }
 
 async function toggleEventComplete() {
-  const id = document.querySelector('#event-id').value; if (!id) return;
+  const id = document.querySelector('#event-id').value; if (!id || state.eventSaving) return;
+  setEventFormBusy(true);
   try { await api(`/api/events/${encodeURIComponent(id)}/complete`, { method: 'POST' }); elements.eventDialog.close(); toast(state.editingEvent?.status === 'completed' ? 'Returned to your plan.' : 'Marked complete.'); await loadDashboard(); }
   catch (error) { document.querySelector('#event-error').textContent = error.message; }
+  finally { setEventFormBusy(false); }
 }
 
 async function handleGoogleAction() {
@@ -365,7 +457,13 @@ function moveWeek(days) { state.anchorDate = new Date(state.anchorDate.getTime()
 function suggestedStart() { const date = new Date(`${state.selectedDate}T10:00:00`); return Number.isNaN(date.valueOf()) ? new Date() : date; }
 function appendMessage(role, content) { const node = document.createElement('div'); node.className = `message ${role}`; node.textContent = content; elements.messages.append(node); elements.messages.scrollTop = elements.messages.scrollHeight; return node; }
 function operationSummary(operation) { const verb = operation.action === 'create' ? 'Add' : 'Move'; return `${verb} ${escapeHtml(operation.title || 'plan item')} · ${new Date(operation.startAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`; }
-function setLoading(value) { state.loading = value; elements.workspace.classList.toggle('loading', value); }
+function setLoading(value) {
+  state.loading = value;
+  elements.workspace.classList.toggle('loading', value);
+  document.querySelector('.dashboard-grid').setAttribute('aria-busy', String(value));
+  document.querySelector('#previous-week').disabled = value;
+  document.querySelector('#next-week').disabled = value;
+}
 function greetingFor(name) { const first = String(name || '').split(/[\s@]/)[0]; return first ? `${first}, your week is in view.` : 'Your week, in balance.'; }
 function capacityLabel(minutes) { if (minutes >= 8 * 60) return 'Open'; if (minutes >= 4 * 60) return 'Good'; if (minutes >= 2 * 60) return 'Tight'; return 'Full'; }
 function formatDuration(minutes) { const safe = Math.max(0, Number(minutes) || 0); const hours = Math.floor(safe / 60); const mins = safe % 60; return hours ? `${hours}h${mins ? ` ${mins}m` : ''}` : `${mins}m`; }
@@ -384,6 +482,9 @@ function toast(message) { elements.toast.textContent = message; elements.toast.c
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: { ...(options.body ? { 'content-type': 'application/json' } : {}), ...(options.headers || {}) } });
   let data = {}; try { data = await response.json(); } catch { data = {}; }
-  if (!response.ok) throw new Error(data.error || 'Arcadia could not complete that request.');
+  if (!response.ok) {
+    const error = new Error(data.error || 'Arcadia could not complete that request.');
+    error.status = response.status; error.data = data; throw error;
+  }
   return data;
 }
