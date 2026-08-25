@@ -8,23 +8,68 @@
     <meta property="og:description" content="A private, capacity-aware student planning dashboard." />
     <meta property="og:image" content="https://arcadia-student-planner.abtinfeizollahi67.chatgpt.site/og-v2.png" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#f4f4f1" />
+    <meta name="theme-color" content="#f4f5f9" />
     <title>Dashboard | Arcadia</title>
+    <script>
+      try {
+        const saved = localStorage.getItem('arcadia-theme');
+        document.documentElement.dataset.theme = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      } catch {}
+    </script>
     <style>
       :root {
-        --ink: #171719;
-        --muted: #73737a;
-        --line: #dededa;
-        --canvas: #f4f4f1;
+        --ink: #282a3b;
+        --muted: #777a8f;
+        --line: #e1e3ec;
+        --canvas: #f4f5f9;
         --panel: #fff;
-        --accent: #4a4b98;
-        --accent-dark: #373876;
-        --accent-soft: #ececf8;
-        --green: #3f775e;
-        --green-soft: #e9f3ed;
-        --amber: #9a6c2b;
-        --amber-soft: #f7efe2;
-        --shadow: 0 18px 55px rgba(23, 23, 25, 0.07);
+        --panel-soft: #f8f8fc;
+        --control: #fff;
+        --hover: #f2f3f8;
+        --divider: #eceef4;
+        --rail: #e9eaf2;
+        --on-accent: #fff;
+        --danger-soft: #fff5f6;
+        --accent: #858bce;
+        --accent-dark: #686faf;
+        --accent-soft: #eeeffc;
+        --blue: #8eb6d8;
+        --blue-soft: #eaf3fa;
+        --purple: #b3a7d9;
+        --green: #6f9e8b;
+        --green-soft: #eaf3ef;
+        --amber: #b08a58;
+        --amber-soft: #f7f0e7;
+        --danger: #a45c67;
+        --shadow: 0 10px 34px rgba(63, 67, 92, .07);
+      }
+
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --ink: #f1f1f8;
+        --muted: #a9acbd;
+        --line: #3e4251;
+        --canvas: #22242d;
+        --panel: #2b2e39;
+        --panel-soft: #313541;
+        --control: #343744;
+        --hover: #373a48;
+        --divider: #383c49;
+        --rail: #292c36;
+        --on-accent: #252735;
+        --danger-soft: #46343a;
+        --accent: #aeb3ed;
+        --accent-dark: #c3c7f4;
+        --accent-soft: #3a3d54;
+        --blue: #9fc7e7;
+        --blue-soft: #303e4c;
+        --purple: #c1b3e7;
+        --green: #8dbba7;
+        --green-soft: #30433d;
+        --amber: #d0ae7d;
+        --amber-soft: #473d31;
+        --danger: #df919b;
+        --shadow: 0 12px 36px rgba(11, 12, 17, .18);
       }
 
       * { box-sizing: border-box; }
@@ -35,37 +80,38 @@
         background: var(--canvas);
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
         -webkit-font-smoothing: antialiased;
+        transition: background 180ms ease, color 180ms ease;
       }
       button, input { font: inherit; }
       button { color: inherit; }
       button, a { -webkit-tap-highlight-color: transparent; }
       a { color: inherit; text-decoration: none; }
-      :focus-visible { outline: 3px solid rgba(74, 75, 152, .28); outline-offset: 3px; }
+      :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 
       .app-shell { min-height: 100vh; display: grid; grid-template-columns: 76px minmax(0, 1fr); }
       .rail {
         position: sticky; top: 0; height: 100vh; z-index: 5;
         display: flex; flex-direction: column; align-items: center;
-        padding: 22px 12px 18px; color: #fff; background: var(--ink);
+        padding: 22px 12px 18px; color: var(--ink); background: var(--rail); border-right: 1px solid var(--line);
       }
       .brand-mark {
         width: 42px; height: 42px; display: grid; place-items: center;
-        border: 1px solid rgba(255,255,255,.18); border-radius: 14px;
+        border: 0; border-radius: 14px; background: var(--accent); color: var(--on-accent);
         font-size: 20px; font-weight: 760; letter-spacing: -.06em;
       }
       .rail-nav { display: grid; gap: 10px; margin-top: 48px; }
       .rail-button {
         width: 44px; height: 44px; display: grid; place-items: center; position: relative;
-        border: 0; border-radius: 13px; cursor: pointer; background: transparent; color: #9999a0;
+        border: 0; border-radius: 13px; cursor: pointer; background: transparent; color: var(--muted);
       }
-      .rail-button:hover, .rail-button.active { color: #fff; background: rgba(255,255,255,.1); }
+      .rail-button:hover, .rail-button.active { color: var(--accent-dark); background: var(--accent-soft); }
       .rail-button.active::before {
         position: absolute; left: -12px; width: 3px; height: 20px; border-radius: 0 4px 4px 0;
-        background: #8889df; content: "";
+        background: var(--accent); content: "";
       }
       .rail-icon { width: 20px; height: 20px; display: grid; place-items: center; font-size: 17px; }
       .rail-spacer { flex: 1; }
-      .avatar { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; background: #6263ad; font-size: 12px; font-weight: 720; }
+      .avatar { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; background: var(--blue-soft); color: var(--accent-dark); font-size: 12px; font-weight: 720; }
       .rail-label { display: none; white-space: nowrap; font-size: 12px; font-weight: 650; }
       .app-shell.rail-open { grid-template-columns: 210px minmax(0, 1fr); }
       .app-shell.rail-open .rail { align-items: stretch; }
@@ -80,108 +126,131 @@
       .top-actions { display: flex; align-items: center; gap: 10px; }
       .status-pill, .button {
         min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-        padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff;
+        padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--control);
         font-size: 13px; font-weight: 650;
       }
       .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 4px var(--amber-soft); }
       .button { cursor: pointer; }
-      .button:hover { border-color: #c6c6c2; }
-      .button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+      .button:hover { border-color: var(--accent); background: var(--hover); }
+      .button.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
       .button.primary:hover { background: var(--accent-dark); }
+
+      .context-strip {
+        display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr; gap: 1px;
+        margin: -6px 0 18px; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--divider);
+      }
+      .context-item { min-width: 0; padding: 14px 17px; background: var(--panel-soft); }
+      .context-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 9px; font-weight: 730; letter-spacing: .05em; text-transform: uppercase; }
+      .context-value { display: block; overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
+      .context-value.accent { color: var(--accent-dark); }
 
       .dashboard-grid {
         display: grid; grid-template-columns: minmax(520px, .92fr) minmax(420px, 1.08fr);
         grid-template-rows: minmax(230px, .72fr) minmax(410px, 1.28fr); gap: 18px;
-        min-height: calc(100vh - 139px);
+        min-height: calc(100vh - 219px);
       }
-      .panel { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: var(--panel); box-shadow: var(--shadow); }
+      .panel { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 24px; background: var(--panel); box-shadow: var(--shadow); }
       .calendar-panel { grid-row: 1 / span 2; display: flex; flex-direction: column; }
-      .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 22px 24px 18px; border-bottom: 1px solid #ecece8; }
+      .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 22px 24px 18px; border-bottom: 1px solid var(--divider); }
       .panel-title { margin: 0; font-size: 17px; letter-spacing: -.025em; }
       .panel-subtitle { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
       .panel-actions { display: flex; gap: 7px; }
-      .icon-button { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; background: #fff; }
-      .icon-button:hover { background: #f6f6f3; }
+      .icon-button { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; background: var(--control); }
+      .icon-button:hover { background: var(--hover); }
 
-      .week-strip { display: grid; grid-template-columns: repeat(7, 1fr); padding: 15px 16px 13px; border-bottom: 1px solid #ecece8; }
+      .week-strip { display: grid; grid-template-columns: repeat(7, 1fr); padding: 15px 16px 13px; border-bottom: 1px solid var(--divider); }
       .day { min-width: 0; padding: 5px 3px; border: 0; border-radius: 12px; cursor: pointer; background: transparent; text-align: center; }
-      .day:hover { background: #f7f7f4; }
+      .day:hover { background: var(--hover); }
       .day span { display: block; margin-bottom: 7px; color: var(--muted); font-size: 10px; font-weight: 720; text-transform: uppercase; }
       .day strong { width: 32px; height: 32px; display: grid; place-items: center; margin: auto; border-radius: 10px; font-size: 13px; }
-      .day.active strong { background: var(--accent); color: #fff; }
+      .day.active strong { background: var(--accent); color: var(--on-accent); }
+
+      .calendar-filters { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 18px; border-bottom: 1px solid var(--divider); }
+      .filter-group { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--panel-soft); }
+      .filter-button { min-height: 28px; padding: 0 9px; border: 0; border-radius: 8px; cursor: pointer; background: transparent; color: var(--muted); font-size: 9px; font-weight: 680; }
+      .filter-button:hover { color: var(--ink); }
+      .filter-button.active { color: var(--accent-dark); background: var(--control); box-shadow: 0 1px 4px rgba(63,67,92,.08); }
+      .sync-caption { color: var(--muted); font-size: 9px; }
 
       .agenda { flex: 1; min-height: 0; overflow: auto; padding: 10px 18px 22px; }
       .agenda-label { display: flex; align-items: center; gap: 10px; margin: 14px 2px 9px; color: var(--muted); font-size: 11px; font-weight: 720; text-transform: uppercase; letter-spacing: .05em; }
-      .agenda-label::after { height: 1px; flex: 1; background: #ecece8; content: ""; }
-      .event { display: grid; grid-template-columns: 52px 5px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 4px; border-bottom: 1px solid #f0f0ed; }
+      .agenda-label::after { height: 1px; flex: 1; background: var(--divider); content: ""; }
+      .event { display: grid; grid-template-columns: 52px 5px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--divider); }
       button.event { width: 100%; border: 0; text-align: left; cursor: pointer; background: transparent; }
-      button.event:hover { background: #fafaf8; }
+      button.event:hover { background: var(--hover); }
       .event.completed .event-copy strong { color: var(--muted); text-decoration: line-through; }
       .event-time { color: var(--muted); font-size: 11px; }
       .event-bar { width: 5px; height: 42px; border-radius: 5px; background: var(--accent); }
       .event.training .event-bar { background: var(--green); }
-      .event.google .event-bar { background: #b8b8bc; }
+      .event.google .event-bar { background: var(--blue); }
       .event-copy strong { display: block; margin-bottom: 4px; font-size: 13px; }
       .event-copy span { color: var(--muted); font-size: 11px; }
       .event-badge { padding: 5px 8px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-dark); font-size: 9px; font-weight: 720; }
       .event.training .event-badge { color: var(--green); background: var(--green-soft); }
-      .event.google .event-badge { color: #696970; background: #f0f0f0; }
+      .event.google .event-badge { color: var(--blue); background: var(--blue-soft); }
 
       .analytics-panel { display: flex; flex-direction: column; }
-      .analytics-body { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; flex: 1; background: #ecece8; }
-      .metric { min-width: 0; padding: 22px; background: #fff; }
+      .analytics-body { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; flex: 1; background: var(--divider); }
+      .metric { min-width: 0; padding: 22px; background: var(--panel); }
       .metric-label { color: var(--muted); font-size: 11px; font-weight: 660; }
       .metric-value { display: block; margin: 16px 0 7px; font-size: clamp(26px, 2.2vw, 38px); line-height: 1; letter-spacing: -.055em; }
       .metric-note { color: var(--green); font-size: 10px; font-weight: 680; }
       .mini-bars { height: 44px; display: flex; align-items: end; gap: 5px; margin-top: 15px; }
-      .mini-bars span { flex: 1; min-width: 4px; border-radius: 4px 4px 1px 1px; background: #d9d9e9; }
-      .mini-bars span:nth-child(4), .mini-bars span:nth-child(5) { background: #7778bd; }
-      .ring { width: 52px; height: 52px; margin-top: 13px; border-radius: 50%; background: conic-gradient(var(--accent) 0 72%, #e8e8e5 72%); position: relative; }
-      .ring::after { position: absolute; inset: 7px; border-radius: inherit; background: #fff; content: ""; }
+      .mini-bars span { flex: 1; min-width: 4px; border-radius: 4px 4px 1px 1px; background: var(--accent-soft); }
+      .mini-bars span:nth-child(4) { background: var(--blue); }
+      .mini-bars span:nth-child(5) { background: var(--purple); }
+      .ring { width: 52px; height: 52px; margin-top: 13px; border-radius: 50%; background: conic-gradient(var(--accent) 0 72%, var(--divider) 72%); position: relative; }
+      .ring::after { position: absolute; inset: 7px; border-radius: inherit; background: var(--panel); content: ""; }
+      .subject-breakdown { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 8px 10px; align-items: center; padding: 13px 22px 16px; border-top: 1px solid var(--divider); }
+      .subject-breakdown strong { grid-column: 1 / -1; margin-bottom: 2px; font-size: 10px; }
+      .subject-name, .subject-minutes { color: var(--muted); font-size: 9px; }
+      .subject-track { height: 5px; overflow: hidden; border-radius: 99px; background: var(--divider); }
+      .subject-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--blue), var(--purple)); }
 
       .chat-panel { display: flex; flex-direction: column; }
       .assistant-state { display: inline-flex; align-items: center; gap: 7px; color: var(--green); font-size: 10px; font-weight: 700; }
       .assistant-state::before { width: 6px; height: 6px; border-radius: 50%; background: currentColor; content: ""; }
       .messages { flex: 1; min-height: 180px; overflow: auto; padding: 20px 22px 12px; }
       .message { max-width: 86%; margin-bottom: 13px; padding: 12px 14px; border-radius: 14px; font-size: 12px; line-height: 1.5; }
-      .message.assistant { border: 1px solid #e7e7e3; border-top-left-radius: 4px; background: #f8f8f6; }
-      .message.user { margin-left: auto; border-bottom-right-radius: 4px; background: var(--accent); color: #fff; }
-      .proposal { max-width: 92%; margin: 0 22px 13px; padding: 13px; border: 1px solid #dcdced; border-radius: 14px; background: #f8f8fd; }
+      .message.assistant { border: 1px solid var(--line); border-top-left-radius: 4px; background: var(--panel-soft); }
+      .message.user { margin-left: auto; border-bottom-right-radius: 4px; background: var(--accent); color: var(--on-accent); }
+      .proposal { max-width: 92%; margin: 0 22px 13px; padding: 13px; border: 1px solid var(--line); border-radius: 14px; background: var(--accent-soft); }
       .proposal-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
       .proposal strong { font-size: 11px; }
       .proposal p { margin: 7px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
       .proposal-chip { padding: 5px 7px; border-radius: 7px; color: var(--accent); background: var(--accent-soft); font-size: 9px; font-weight: 720; }
       .suggestions { display: flex; gap: 7px; overflow-x: auto; padding: 0 22px 12px; scrollbar-width: none; }
-      .suggestion { flex: 0 0 auto; padding: 8px 10px; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; background: #fff; color: var(--muted); font-size: 10px; }
-      .composer { display: grid; grid-template-columns: minmax(0, 1fr) 38px; gap: 8px; padding: 13px; border-top: 1px solid #ecece8; }
-      .composer input { min-width: 0; height: 40px; padding: 0 13px; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: #fbfbf9; font-size: 12px; }
-      .composer input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(74,75,152,.1); }
-      .send { width: 38px; height: 40px; border: 0; border-radius: 11px; cursor: pointer; color: #fff; background: var(--accent); }
+      .suggestion { flex: 0 0 auto; padding: 8px 10px; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; background: var(--control); color: var(--muted); font-size: 10px; }
+      .suggestion:hover { color: var(--accent-dark); border-color: var(--accent); }
+      .composer { display: grid; grid-template-columns: minmax(0, 1fr) 38px; gap: 8px; padding: 13px; border-top: 1px solid var(--divider); }
+      .composer input { min-width: 0; height: 40px; padding: 0 13px; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: var(--panel-soft); font-size: 12px; }
+      .composer input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+      .send { width: 38px; height: 40px; border: 0; border-radius: 11px; cursor: pointer; color: var(--on-accent); background: var(--accent); }
       .send:disabled { cursor: wait; opacity: .55; }
       .proposal-actions { display: flex; gap: 7px; margin-top: 11px; }
       .proposal-actions .button { min-height: 32px; padding-inline: 11px; font-size: 10px; }
       .empty-state { padding: 44px 22px; color: var(--muted); text-align: center; font-size: 12px; line-height: 1.55; }
       .empty-state strong { display: block; margin-bottom: 6px; color: var(--ink); font-size: 14px; }
 
-      dialog { width: min(520px, calc(100% - 28px)); padding: 0; border: 0; border-radius: 20px; color: var(--ink); background: #fff; box-shadow: 0 30px 100px rgba(23,23,25,.25); }
-      dialog::backdrop { background: rgba(23,23,25,.42); backdrop-filter: blur(5px); }
+      dialog { width: min(520px, calc(100% - 28px)); padding: 0; border: 1px solid var(--line); border-radius: 22px; color: var(--ink); background: var(--panel); box-shadow: 0 24px 70px rgba(23,23,25,.22); }
+      dialog::backdrop { background: rgba(36,38,48,.48); }
       .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 21px 22px; border-bottom: 1px solid var(--line); }
       .modal-head h2 { margin: 0; font-size: 18px; letter-spacing: -.03em; }
-      .close-button { width: 34px; height: 34px; border: 0; border-radius: 10px; cursor: pointer; background: #f3f3f0; }
+      .close-button { width: 34px; height: 34px; border: 0; border-radius: 10px; cursor: pointer; color: var(--ink); background: var(--panel-soft); }
       .event-form, .settings-body { padding: 22px; }
       .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
       .field { display: grid; gap: 6px; }
       .field.wide { grid-column: 1 / -1; }
       .field label { color: var(--muted); font-size: 10px; font-weight: 700; }
-      .field input, .field select, .field textarea { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: #fbfbf9; color: var(--ink); font: inherit; font-size: 12px; }
+      .field input, .field select, .field textarea { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-soft); color: var(--ink); font: inherit; font-size: 12px; }
       .field textarea { min-height: 75px; resize: vertical; }
-      .form-error { min-height: 18px; margin: 12px 0 0; color: #a33f3f; font-size: 11px; }
-      .modal-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 4px; padding-top: 16px; border-top: 1px solid #ecece8; }
-      .button.danger { border-color: #eed4d4; color: #9a3535; background: #fff8f8; }
-      .connection-card { padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: #fafaf8; }
+      .form-error { min-height: 18px; margin: 12px 0 0; color: var(--danger); font-size: 11px; }
+      .modal-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 4px; padding-top: 16px; border-top: 1px solid var(--divider); }
+      .button.danger { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
+      .connection-card { padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-soft); }
       .connection-card strong { display: block; margin-bottom: 6px; font-size: 13px; }
       .connection-card p { margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.5; }
-      .toast { position: fixed; right: 22px; bottom: 22px; z-index: 20; max-width: 360px; padding: 13px 15px; border-radius: 12px; color: #fff; background: var(--ink); box-shadow: var(--shadow); font-size: 12px; transform: translateY(20px); opacity: 0; pointer-events: none; transition: 180ms ease; }
+      .toast { position: fixed; right: 22px; bottom: 22px; z-index: 20; max-width: 360px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--panel); box-shadow: var(--shadow); font-size: 12px; transform: translateY(20px); opacity: 0; pointer-events: none; transition: 180ms ease; }
       .toast.visible { transform: translateY(0); opacity: 1; }
       .loading .dashboard-grid { opacity: .58; pointer-events: none; }
 
@@ -205,7 +274,8 @@
         .status-pill { display: none; }
         .button.primary { padding: 0 11px; font-size: 0; }
         .button.primary::after { content: "+"; font-size: 20px; }
-        .panel { border-radius: 17px; box-shadow: 0 10px 35px rgba(23,23,25,.05); }
+        .context-strip { grid-template-columns: 1fr 1fr; }
+        .panel { border-radius: 19px; box-shadow: 0 8px 24px rgba(23,23,25,.05); }
         .panel-head { padding: 18px; }
         .week-strip { padding-inline: 8px; }
         .day strong { width: 29px; height: 29px; }
@@ -217,6 +287,7 @@
         .metric-value { grid-row: 1 / span 2; grid-column: 2; margin: 0; }
         .mini-bars, .ring { display: none; }
       }
+      @media (max-width: 430px) { .context-strip { grid-template-columns: 1fr; } .calendar-filters { align-items: flex-start; flex-direction: column; } }
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
     </style>
   </head>
@@ -241,10 +312,18 @@
             <h1 id="greeting">Your week, in balance.</h1>
           </div>
           <div class="top-actions">
+            <button class="icon-button" id="theme-toggle" type="button" aria-label="Use dark mode" aria-pressed="false">◐</button>
             <button class="status-pill" id="google-status" type="button"><span class="status-dot"></span><span>Google Calendar</span></button>
             <button class="button primary" id="add-event-button" type="button">Add to plan</button>
           </div>
         </header>
+
+        <section class="context-strip" aria-label="Today at a glance">
+          <div class="context-item"><span class="context-label">Right now</span><strong class="context-value accent" id="context-now">Finding your next opening…</strong></div>
+          <div class="context-item"><span class="context-label">Up next</span><strong class="context-value" id="context-next">Reviewing your plan…</strong></div>
+          <div class="context-item"><span class="context-label">Weekly load</span><strong class="context-value" id="context-load">Calculating capacity…</strong></div>
+          <div class="context-item"><span class="context-label">Recovery</span><strong class="context-value" id="context-recovery">Sleep stays visible</strong></div>
+        </section>
 
         <section class="dashboard-grid" aria-label="Dashboard overview">
           <article class="panel calendar-panel" id="calendar" aria-labelledby="calendar-title">
@@ -260,6 +339,15 @@
               <button class="day" type="button"><span>Fri</span><strong>28</strong></button>
               <button class="day" type="button"><span>Sat</span><strong>29</strong></button>
               <button class="day" type="button"><span>Sun</span><strong>30</strong></button>
+            </div>
+            <div class="calendar-filters">
+              <div class="filter-group" id="calendar-filters" role="group" aria-label="Filter calendar">
+                <button class="filter-button active" type="button" data-filter="all" aria-pressed="true">All</button>
+                <button class="filter-button" type="button" data-filter="study" aria-pressed="false">Study</button>
+                <button class="filter-button" type="button" data-filter="training" aria-pressed="false">Training</button>
+                <button class="filter-button" type="button" data-filter="google" aria-pressed="false">Google</button>
+              </div>
+              <span class="sync-caption" id="sync-caption">Arcadia calendar</span>
             </div>
             <div class="agenda" id="agenda">
               <div class="agenda-label">Morning</div>
@@ -280,6 +368,7 @@
               <div class="metric"><span class="metric-label">Completion</span><strong class="metric-value">72%</strong><span class="metric-note">9 of 12 blocks</span><div class="ring" role="img" aria-label="72 percent complete"></div></div>
               <div class="metric"><span class="metric-label">Capacity</span><strong class="metric-value">Good</strong><span class="metric-note">3h 20m open</span><div class="mini-bars" aria-hidden="true"><span style="height:80%"></span><span style="height:55%"></span><span style="height:63%"></span><span style="height:38%"></span><span style="height:28%"></span></div></div>
             </div>
+            <div class="subject-breakdown" id="subject-breakdown"><strong>Study mix</strong><span class="subject-name">Waiting for your first completed block</span><span class="subject-track"><span class="subject-fill" style="width:0"></span></span><span class="subject-minutes">0m</span></div>
           </article>
 
           <article class="panel chat-panel" aria-labelledby="assistant-title">

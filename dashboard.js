@@ -2,9 +2,14 @@ const state = {
   data: null,
   anchorDate: new Date(),
   selectedDate: localDateKey(new Date()),
+  calendarFilter: 'all',
   editingEvent: null,
   loading: false
 };
+
+const savedTheme = localStorage.getItem('arcadia-theme');
+const initialTheme = savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+document.documentElement.dataset.theme = initialTheme;
 
 const elements = {
   shell: document.querySelector('.app-shell'),
@@ -16,6 +21,12 @@ const elements = {
   weekStrip: document.querySelector('#week-strip'),
   agenda: document.querySelector('#agenda'),
   analytics: document.querySelector('#analytics-body'),
+  subjectBreakdown: document.querySelector('#subject-breakdown'),
+  contextNow: document.querySelector('#context-now'),
+  contextNext: document.querySelector('#context-next'),
+  contextLoad: document.querySelector('#context-load'),
+  contextRecovery: document.querySelector('#context-recovery'),
+  syncCaption: document.querySelector('#sync-caption'),
   googleStatus: document.querySelector('#google-status'),
   messages: document.querySelector('#messages'),
   proposals: document.querySelector('#proposals'),
@@ -35,6 +46,13 @@ bindControls();
 loadDashboard();
 
 function bindControls() {
+  updateThemeToggle();
+  document.querySelector('#theme-toggle').addEventListener('click', () => {
+    const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('arcadia-theme', theme);
+    updateThemeToggle();
+  });
   document.querySelector('#rail-toggle').addEventListener('click', () => {
     const open = elements.shell.classList.toggle('rail-open');
     document.querySelector('#rail-toggle').setAttribute('aria-expanded', String(open));
@@ -47,6 +65,14 @@ function bindControls() {
   elements.googleStatus.addEventListener('click', () => elements.settingsDialog.showModal());
   document.querySelector('#previous-week').addEventListener('click', () => moveWeek(-7));
   document.querySelector('#next-week').addEventListener('click', () => moveWeek(7));
+  document.querySelector('#calendar-filters').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-filter]'); if (!button) return;
+    state.calendarFilter = button.dataset.filter;
+    document.querySelectorAll('[data-filter]').forEach((item) => {
+      const active = item === button; item.classList.toggle('active', active); item.setAttribute('aria-pressed', String(active));
+    });
+    if (state.data) renderAgenda(state.data.events);
+  });
   elements.eventForm.addEventListener('submit', saveEvent);
   document.querySelector('#delete-event-button').addEventListener('click', removeEvent);
   document.querySelector('#complete-event-button').addEventListener('click', toggleEventComplete);
@@ -60,6 +86,36 @@ function bindControls() {
   const params = new URLSearchParams(location.search);
   if (params.get('google') === 'connected') { toast('Google Calendar connected.'); history.replaceState({}, '', '/'); }
   if (params.get('google') === 'denied') { toast('Google Calendar connection was cancelled.'); history.replaceState({}, '', '/'); }
+}
+
+function updateThemeToggle() {
+  const button = document.querySelector('#theme-toggle');
+  if (!button) return;
+  const dark = document.documentElement.dataset.theme === 'dark';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#22242d' : '#f4f5f9');
+  button.setAttribute('aria-pressed', String(dark));
+  button.setAttribute('aria-label', dark ? 'Use light mode' : 'Use dark mode');
+  button.textContent = dark ? '☼' : '◐';
+}
+
+function renderContext(events, analytics) {
+  const now = new Date();
+  const today = localDateKey(now);
+  const todayEvents = events
+    .filter((event) => localDateKey(new Date(event.startAt)) === today && Date.parse(event.endAt) > now.getTime())
+    .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
+  const active = todayEvents.find((event) => Date.parse(event.startAt) <= now.getTime());
+  const next = todayEvents.find((event) => Date.parse(event.startAt) > now.getTime());
+  const nextSleep = todayEvents.find((event) => event.kind === 'sleep');
+
+  elements.contextNow.textContent = active
+    ? `In session · ${active.title}`
+    : next
+      ? `Clear for ${formatDuration(Math.max(0, Math.round((Date.parse(next.startAt) - now.getTime()) / 60000)))}`
+      : 'Open for the rest of today';
+  elements.contextNext.textContent = next ? `${next.title} · ${formatTime(next.startAt)}` : 'No more commitments';
+  elements.contextLoad.textContent = `${capacityLabel(analytics.capacityMinutes)} · ${formatDuration(analytics.plannedMinutes)} planned`;
+  elements.contextRecovery.textContent = nextSleep ? `Sleep target · ${formatTime(nextSleep.startAt)}` : 'Add a sleep target';
 }
 
 async function loadDashboard() {
@@ -84,6 +140,7 @@ function renderDashboard() {
   elements.avatar.textContent = initials || 'A';
   elements.avatar.setAttribute('aria-label', `Signed in as ${user.name}`);
   elements.weekSummary.textContent = `${formatRange(range)} · ${formatDuration(analytics.plannedMinutes)} planned`;
+  renderContext(events, analytics);
   renderWeek(range);
   renderAgenda(events);
   renderAnalytics(analytics);
@@ -108,7 +165,8 @@ function renderWeek(range) {
 }
 
 function renderAgenda(events) {
-  const selected = events.filter((event) => localDateKey(new Date(event.startAt)) === state.selectedDate);
+  const selected = events.filter((event) => localDateKey(new Date(event.startAt)) === state.selectedDate)
+    .filter((event) => state.calendarFilter === 'all' || (state.calendarFilter === 'google' ? event.source === 'google' : event.kind === state.calendarFilter));
   elements.agenda.innerHTML = '';
   if (!selected.length) {
     elements.agenda.innerHTML = emptyState('A clear day', 'Add a study block, task, training session, or protected rest.');
@@ -138,8 +196,15 @@ function renderAnalytics(analytics) {
   const rate = Math.max(0, Math.min(100, analytics.completionRate));
   elements.analytics.innerHTML = `
     <div class="metric"><span class="metric-label">Focused time</span><strong class="metric-value">${formatDuration(analytics.focusedMinutes)}</strong><span class="metric-note">${formatDuration(analytics.plannedMinutes)} planned</span><div class="mini-bars" aria-hidden="true"><span style="height:30%"></span><span style="height:48%"></span><span style="height:42%"></span><span style="height:68%"></span><span style="height:${Math.max(18, rate)}%"></span></div></div>
-    <div class="metric"><span class="metric-label">Completion</span><strong class="metric-value">${rate}%</strong><span class="metric-note">${analytics.completedCount} of ${analytics.plannedCount} blocks</span><div class="ring" role="img" aria-label="${rate} percent complete" style="background:conic-gradient(var(--accent) 0 ${rate}%,#e8e8e5 ${rate}%)"></div></div>
+    <div class="metric"><span class="metric-label">Completion</span><strong class="metric-value">${rate}%</strong><span class="metric-note">${analytics.completedCount} of ${analytics.plannedCount} blocks</span><div class="ring" role="img" aria-label="${rate} percent complete" style="background:conic-gradient(var(--accent) 0 ${rate}%,var(--divider) ${rate}%)"></div></div>
     <div class="metric"><span class="metric-label">Capacity</span><strong class="metric-value">${capacityLabel(analytics.capacityMinutes)}</strong><span class="metric-note">${formatDuration(analytics.capacityMinutes)} open${topSubject ? ` · ${escapeHtml(topSubject.subject)} leads` : ''}</span><div class="mini-bars" aria-hidden="true"><span style="height:78%"></span><span style="height:58%"></span><span style="height:49%"></span><span style="height:34%"></span><span style="height:24%"></span></div></div>`;
+  const subjects = analytics.subjectDistribution || [];
+  if (!subjects.length) {
+    elements.subjectBreakdown.innerHTML = '<strong>Study mix</strong><span class="subject-name">Complete a study block to build your mix</span><span class="subject-track"><span class="subject-fill" style="width:0"></span></span><span class="subject-minutes">0m</span>';
+  } else {
+    const max = Math.max(...subjects.map((item) => item.minutes), 1);
+    elements.subjectBreakdown.innerHTML = `<strong>Study mix</strong>${subjects.slice(0, 3).map((item) => `<span class="subject-name">${escapeHtml(item.subject)}</span><span class="subject-track"><span class="subject-fill" style="width:${Math.round((item.minutes / max) * 100)}%"></span></span><span class="subject-minutes">${formatDuration(item.minutes)}</span>`).join('')}`;
+  }
 }
 
 function renderGoogle(google) {
@@ -157,6 +222,9 @@ function renderGoogle(google) {
     elements.googleDetail.textContent = 'Connect your calendars so Arcadia can plan around real commitments. Arcadia only writes study blocks to its own Google calendar.';
     elements.googleConnect.textContent = 'Connect Google'; elements.googleDisconnect.hidden = true;
   }
+  elements.syncCaption.textContent = google.connected
+    ? `Google ${google.lastSyncAt ? `· synced ${relativeTime(google.lastSyncAt)}` : '· sync pending'}`
+    : 'Arcadia calendar only';
 }
 
 function renderMessages(assistant) {
@@ -291,6 +359,7 @@ function greetingFor(name) { const first = String(name || '').split(/[\s@]/)[0];
 function capacityLabel(minutes) { if (minutes >= 8 * 60) return 'Open'; if (minutes >= 4 * 60) return 'Good'; if (minutes >= 2 * 60) return 'Tight'; return 'Full'; }
 function formatDuration(minutes) { const safe = Math.max(0, Number(minutes) || 0); const hours = Math.floor(safe / 60); const mins = safe % 60; return hours ? `${hours}h${mins ? ` ${mins}m` : ''}` : `${mins}m`; }
 function formatTime(value) { return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+function relativeTime(value) { const elapsed = Date.now() - Date.parse(value); if (!Number.isFinite(elapsed) || elapsed < 60000) return 'just now'; const minutes = Math.floor(elapsed / 60000); if (minutes < 60) return `${minutes}m ago`; const hours = Math.floor(minutes / 60); return hours < 24 ? `${hours}h ago` : `${Math.floor(hours / 24)}d ago`; }
 function formatRange(range) { const start = new Date(range.start); const end = new Date(Date.parse(range.end) - 86400000); return `${start.toLocaleDateString([], { day: 'numeric', month: 'short' })}–${end.toLocaleDateString([], { day: 'numeric', month: 'short' })}`; }
 function minutesBetween(start, end) { return Math.max(0, Math.round((Date.parse(end) - Date.parse(start)) / 60000)); }
 function localDateKey(date) { const year = date.getFullYear(); const month = String(date.getMonth() + 1).padStart(2, '0'); const day = String(date.getDate()).padStart(2, '0'); return `${year}-${month}-${day}`; }
