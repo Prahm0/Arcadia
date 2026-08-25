@@ -23,11 +23,20 @@ const elements = {
   todayLabel: document.querySelector('#today-label'),
   greeting: document.querySelector('#greeting'),
   avatar: document.querySelector('#avatar'),
+  profileMenu: document.querySelector('#profile-menu'),
+  profileMenuAvatar: document.querySelector('#profile-menu-avatar'),
+  profileMenuName: document.querySelector('#profile-menu-name'),
+  profileMenuEmail: document.querySelector('#profile-menu-email'),
   weekSummary: document.querySelector('#week-summary'),
   calendarPreviewKicker: document.querySelector('#calendar-preview-kicker'),
+  dashboardWeekStrip: document.querySelector('#dashboard-week-strip'),
   calendarPreview: document.querySelector('#calendar-preview'),
   pulsePreview: document.querySelector('#pulse-preview'),
   assistantPreview: document.querySelector('#assistant-preview'),
+  dashboardAssistantState: document.querySelector('#dashboard-assistant-state'),
+  dashboardComposer: document.querySelector('#dashboard-composer'),
+  dashboardChatInput: document.querySelector('#dashboard-chat-input'),
+  dashboardSend: document.querySelector('#dashboard-send-button'),
   weekStrip: document.querySelector('#week-strip'),
   agenda: document.querySelector('#agenda'),
   analytics: document.querySelector('#analytics-body'),
@@ -48,6 +57,7 @@ const elements = {
   eventConflicts: document.querySelector('#event-conflicts'),
   saveEventButton: document.querySelector('#save-event-button'),
   settingsDialog: document.querySelector('#settings-dialog'),
+  accountDialog: document.querySelector('#account-dialog'),
   googleConnect: document.querySelector('#google-connect'),
   googleDisconnect: document.querySelector('#google-disconnect'),
   googleDetail: document.querySelector('#google-detail'),
@@ -94,10 +104,37 @@ function bindControls() {
     elements.viewButtons[(current + direction + elements.viewButtons.length) % elements.viewButtons.length].click();
   });
   document.querySelector('#settings-button').addEventListener('click', () => elements.settingsDialog.showModal());
+  elements.avatar.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setProfileMenu(!elements.profileMenu.classList.contains('open'));
+  });
+  document.querySelector('#account-menu-button').addEventListener('click', () => {
+    setProfileMenu(false);
+    elements.accountDialog.showModal();
+  });
+  document.querySelector('#profile-settings-button').addEventListener('click', () => {
+    setProfileMenu(false);
+    elements.settingsDialog.showModal();
+  });
+  document.querySelector('#invite-menu-button').addEventListener('click', inviteFriend);
+  document.querySelector('#logout-menu-button').addEventListener('click', () => {
+    setProfileMenu(false);
+    location.assign('/signout-with-chatgpt?return_to=/');
+  });
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.profile-wrap')) setProfileMenu(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !elements.profileMenu.classList.contains('open')) return;
+    setProfileMenu(false, { restoreFocus: true });
+  });
   document.querySelector('#add-event-button').addEventListener('click', () => openEventDialog());
   elements.googleStatus.addEventListener('click', () => elements.settingsDialog.showModal());
   document.querySelector('#previous-week').addEventListener('click', () => moveWeek(-7));
   document.querySelector('#next-week').addEventListener('click', () => moveWeek(7));
+  document.querySelector('#dashboard-previous-week').addEventListener('click', () => moveWeek(-7));
+  document.querySelector('#dashboard-next-week').addEventListener('click', () => moveWeek(7));
+  document.querySelector('#dashboard-add-event').addEventListener('click', () => openEventDialog());
   document.querySelector('#calendar-filters').addEventListener('click', (event) => {
     const button = event.target.closest('[data-filter]'); if (!button) return;
     state.calendarFilter = button.dataset.filter;
@@ -111,6 +148,7 @@ function bindControls() {
   document.querySelector('#complete-event-button').addEventListener('click', toggleEventComplete);
   document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => document.querySelector(`#${button.dataset.close}`).close()));
   elements.composer.addEventListener('submit', sendChat);
+  elements.dashboardComposer.addEventListener('submit', sendDashboardChat);
   document.querySelectorAll('[data-prompt]').forEach((button) => button.addEventListener('click', () => {
     elements.chatInput.value = button.dataset.prompt; elements.chatInput.focus();
   }));
@@ -126,6 +164,27 @@ function viewFromHash() {
   if (['dashboard', 'calendar', 'weekly-pulse', 'assistant'].includes(requested)) return requested;
   history.replaceState({}, '', `${location.pathname}${location.search}#dashboard`);
   return 'dashboard';
+}
+
+function setProfileMenu(open, { restoreFocus = false } = {}) {
+  elements.profileMenu.classList.toggle('open', open);
+  elements.avatar.setAttribute('aria-expanded', String(open));
+  if (open) elements.profileMenu.querySelector('[role="menuitem"]').focus();
+  if (!open && restoreFocus) elements.avatar.focus();
+}
+
+async function inviteFriend() {
+  setProfileMenu(false);
+  const invite = { title: 'Arcadia', text: 'Plan your week with Arcadia.', url: location.origin };
+  try {
+    if (navigator.share) await navigator.share(invite);
+    else {
+      await navigator.clipboard.writeText(`${invite.text} ${invite.url}`);
+      toast('Invite link copied.');
+    }
+  } catch (error) {
+    if (error.name !== 'AbortError') toast('Could not share the invite right now.');
+  }
 }
 
 function activateView(view, { focus = false } = {}) {
@@ -210,7 +269,12 @@ function renderDashboard() {
   elements.greeting.textContent = greetingFor(user.name);
   const initials = user.name.split(/\s|@/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
   elements.avatar.textContent = initials || 'A';
-  elements.avatar.setAttribute('aria-label', `Signed in as ${user.name}`);
+  elements.avatar.setAttribute('aria-label', `Open profile menu for ${user.name}`);
+  elements.profileMenuAvatar.textContent = initials || 'A';
+  elements.profileMenuName.textContent = user.name;
+  elements.profileMenuEmail.textContent = user.email;
+  document.querySelector('#account-name').textContent = user.name;
+  document.querySelector('#account-email').textContent = user.email;
   elements.weekSummary.textContent = `${formatRange(range)} · ${formatDuration(analytics.plannedMinutes)} planned`;
   renderDashboardPreviews(events, analytics, assistant, range);
   renderContext(events, analytics);
@@ -223,21 +287,7 @@ function renderDashboard() {
 
 function renderDashboardPreviews(events, analytics, assistant, range) {
   elements.calendarPreviewKicker.textContent = formatRange(range);
-  const now = Date.now();
-  const upcoming = events
-    .filter((event) => Date.parse(event.endAt) > now && event.status !== 'cancelled')
-    .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt))
-    .slice(0, 3);
-  if (!upcoming.length) {
-    elements.calendarPreview.innerHTML = '<div class="preview-empty">Your calendar is clear for the rest of this week.</div>';
-  } else {
-    elements.calendarPreview.innerHTML = `<div class="preview-list">${upcoming.map((event) => {
-      const eventDate = new Date(event.startAt);
-      const when = event.allDay ? `${eventDate.toLocaleDateString([], { weekday: 'short' })} · All day` : `${eventDate.toLocaleDateString([], { weekday: 'short' })} · ${formatTime(event.startAt)}`;
-      const detail = event.location || event.subject || formatDuration(minutesBetween(event.startAt, event.endAt));
-      return `<div class="preview-event${event.source === 'google' ? ' google' : ''}"><span class="preview-time">${when}</span><span class="preview-bar"></span><span><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(detail)}</span></span></div>`;
-    }).join('')}</div>`;
-  }
+  renderDashboardCalendar(events, range);
 
   const topSubject = analytics.subjectDistribution?.[0];
   elements.pulsePreview.innerHTML = `<div class="preview-metrics"><div class="preview-metric"><span>Focused</span><strong>${formatDuration(analytics.focusedMinutes)}</strong></div><div class="preview-metric"><span>Complete</span><strong>${Math.max(0, Math.min(100, analytics.completionRate))}%</strong></div><div class="preview-metric"><span>Capacity</span><strong>${capacityLabel(analytics.capacityMinutes)}</strong></div></div><p class="preview-detail">${topSubject ? `${escapeHtml(topSubject.subject)} leads your study mix with ${formatDuration(topSubject.minutes)} focused.` : 'Complete a study block to start building your study mix.'}</p>`;
@@ -246,6 +296,53 @@ function renderDashboardPreviews(events, analytics, assistant, range) {
   const fallback = assistant.configured ? 'Your calendar is ready. Ask me what to focus on next.' : 'The assistant is ready once OpenAI setup is complete.';
   const pending = assistant.proposals?.length || 0;
   elements.assistantPreview.innerHTML = `<p class="preview-message">${escapeHtml(latestAssistant?.content || fallback)}</p><div class="preview-status"><span>${pending ? `${pending} schedule proposal${pending === 1 ? '' : 's'} waiting` : 'No pending schedule changes'}</span><strong>${assistant.configured ? 'Ready' : 'Setup required'}</strong></div>`;
+  elements.dashboardAssistantState.textContent = assistant.configured ? 'Ready' : 'Setup required';
+  elements.dashboardChatInput.disabled = !assistant.configured;
+  elements.dashboardSend.disabled = !assistant.configured;
+  elements.dashboardChatInput.placeholder = assistant.configured ? 'Ask Arcadia to plan or adjust…' : 'OpenAI setup required';
+}
+
+function renderDashboardCalendar(events, range) {
+  const start = new Date(range.start);
+  elements.dashboardWeekStrip.innerHTML = '';
+  for (let index = 0; index < 7; index += 1) {
+    const date = new Date(start); date.setUTCDate(start.getUTCDate() + index);
+    const key = localDateKey(date);
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = `preview-day${key === state.selectedDate ? ' active' : ''}`;
+    button.setAttribute('aria-pressed', String(key === state.selectedDate));
+    button.setAttribute('aria-label', date.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }));
+    if (key === state.selectedDate) button.setAttribute('aria-current', 'date');
+    button.innerHTML = `${date.toLocaleDateString([], { weekday: 'narrow' })}<strong>${date.getDate()}</strong>`;
+    button.addEventListener('click', () => {
+      state.selectedDate = key;
+      renderDashboardCalendar(events, range);
+      renderWeek(range);
+      renderAgenda(events);
+    });
+    elements.dashboardWeekStrip.append(button);
+  }
+  const selected = events
+    .filter((event) => localDateKey(new Date(event.startAt)) === state.selectedDate && event.status !== 'cancelled')
+    .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt))
+    .slice(0, 5);
+  elements.calendarPreview.innerHTML = '';
+  if (!selected.length) {
+    elements.calendarPreview.innerHTML = '<div class="preview-empty">A clear day. Add a block or protect some recovery time.</div>';
+  } else {
+    const list = document.createElement('div'); list.className = 'preview-list';
+    for (const event of selected) {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = `preview-event${event.source === 'google' ? ' google' : ''}`;
+      const detail = event.location || event.subject || formatDuration(minutesBetween(event.startAt, event.endAt));
+      button.innerHTML = `<span class="preview-time">${event.allDay ? 'All day' : formatTime(event.startAt)}</span><span class="preview-bar"></span><span><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(detail)}</span></span>`;
+      button.addEventListener('click', () => event.source === 'google'
+        ? toast(`${event.title} comes from Google Calendar and is read-only in Arcadia.`)
+        : openEventDialog(event));
+      list.append(button);
+    }
+    elements.calendarPreview.append(list);
+  }
 }
 
 function renderWeek(range) {
@@ -372,6 +469,42 @@ async function sendChat(event) {
     }
   } catch (error) { thinking.textContent = error.message; }
   finally { elements.send.disabled = !state.data.assistant.configured; elements.chatInput.focus(); }
+}
+
+async function sendDashboardChat(event) {
+  event.preventDefault();
+  const message = elements.dashboardChatInput.value.trim();
+  if (!message || state.loading || !state.data?.assistant?.configured) return;
+  elements.dashboardChatInput.value = '';
+  elements.dashboardChatInput.disabled = true;
+  elements.dashboardSend.disabled = true;
+  elements.assistantPreview.innerHTML = '<p class="preview-message">Thinking through your week…</p><div class="preview-status"><span>Your request is being reviewed</span><strong>Working</strong></div>';
+  const responseNode = elements.assistantPreview.querySelector('.preview-message');
+  let completed = false;
+  try {
+    const response = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message }) });
+    if (!response.ok) throw new Error((await response.json()).error || 'The assistant is unavailable.');
+    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
+    while (true) {
+      const { value, done } = await reader.read(); buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const lines = buffer.split('\n'); buffer = lines.pop() || '';
+      for (const line of lines) if (line.trim()) {
+        const payload = JSON.parse(line);
+        if (payload.type === 'message') responseNode.textContent = payload.message.content;
+        if (payload.type === 'error') throw new Error(payload.message);
+      }
+      if (done) break;
+    }
+    completed = true;
+  } catch (error) {
+    responseNode.textContent = error.message;
+    elements.assistantPreview.querySelector('.preview-status').innerHTML = '<span>Try again when you are ready</span><strong>Unavailable</strong>';
+  } finally {
+    if (completed) await loadDashboard();
+    elements.dashboardChatInput.disabled = !state.data?.assistant?.configured;
+    elements.dashboardSend.disabled = !state.data?.assistant?.configured;
+    elements.dashboardChatInput.focus();
+  }
 }
 
 async function handleProposal(id, action) {
@@ -504,6 +637,9 @@ function setLoading(value) {
   document.querySelector('.dashboard-grid').setAttribute('aria-busy', String(value));
   document.querySelector('#previous-week').disabled = value;
   document.querySelector('#next-week').disabled = value;
+  document.querySelector('#dashboard-previous-week').disabled = value;
+  document.querySelector('#dashboard-next-week').disabled = value;
+  document.querySelector('#dashboard-add-event').disabled = value;
 }
 function greetingFor(name) { const first = String(name || '').split(/[\s@]/)[0]; return first ? `${first}, your week is in view.` : 'Your week, in balance.'; }
 function capacityLabel(minutes) { if (minutes >= 8 * 60) return 'Open'; if (minutes >= 4 * 60) return 'Good'; if (minutes >= 2 * 60) return 'Tight'; return 'Full'; }

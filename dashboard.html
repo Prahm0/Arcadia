@@ -132,14 +132,38 @@
       }
       .rail-icon { width: 20px; height: 20px; display: grid; place-items: center; font-size: 17px; }
       .rail-spacer { flex: 1; }
-      .avatar { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; background: var(--blue-soft); color: var(--accent-dark); font-size: 12px; font-weight: 720; }
+      .profile-wrap { position: relative; display: grid; justify-items: center; }
+      .avatar {
+        width: 38px; height: 38px; display: grid; place-items: center; border: 0; border-radius: 50%;
+        cursor: pointer; background: var(--blue-soft); color: var(--accent-dark); font-size: 12px; font-weight: 720;
+        box-shadow: inset 0 0 0 1px rgba(104, 111, 175, .12); transition: transform 160ms ease, box-shadow 160ms ease;
+      }
+      .avatar:hover, .avatar[aria-expanded="true"] { transform: translateY(-1px); box-shadow: 0 0 0 3px var(--rail), 0 0 0 5px var(--accent), var(--shadow-low); }
+      .profile-menu {
+        position: absolute; left: calc(100% + 18px); bottom: -3px; z-index: 30; width: 238px;
+        padding: 7px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow-elevated);
+        opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(14px) scale(.98); transform-origin: bottom left;
+        transition: opacity 170ms ease, transform 170ms ease, visibility 170ms ease;
+      }
+      .profile-menu.open { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0) scale(1); }
+      .profile-summary { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; align-items: center; padding: 8px 9px 11px; border-bottom: 1px solid var(--divider); }
+      .profile-summary-avatar { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--blue-soft); color: var(--accent-dark); font-size: 11px; font-weight: 760; }
+      .profile-summary-copy { min-width: 0; }
+      .profile-summary-copy strong, .profile-summary-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .profile-summary-copy strong { font-size: 12px; }
+      .profile-summary-copy span { margin-top: 3px; color: var(--muted); font-size: 10px; }
+      .profile-menu-items { display: grid; gap: 2px; padding-top: 6px; }
+      .profile-menu-item { width: 100%; min-height: 38px; display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: center; padding: 0 10px; border: 0; border-radius: 10px; cursor: pointer; background: transparent; color: var(--ink); text-align: left; font-size: 12px; font-weight: 640; }
+      .profile-menu-item:hover { background: var(--hover); }
+      .profile-menu-item .menu-icon { color: var(--muted); font-size: 15px; text-align: center; }
+      .profile-menu-item.danger { color: var(--danger); }
       .rail-label { display: none; white-space: nowrap; font-size: 12px; font-weight: 650; }
       .app-shell.rail-open { grid-template-columns: 210px minmax(0, 1fr); }
       .app-shell.rail-open .rail { align-items: stretch; }
       .app-shell.rail-open .rail-brand { grid-template-columns: 42px minmax(0, 1fr) 28px; align-items: center; justify-content: stretch; }
       .app-shell.rail-open .brand-name { display: block; }
       .app-shell.rail-open .rail-toggle span { transform: rotate(180deg); }
-      .app-shell.rail-open .avatar { align-self: center; }
+      .app-shell.rail-open .profile-wrap { align-self: center; }
       .app-shell.rail-open .rail-button { width: 100%; display: flex; justify-content: flex-start; gap: 12px; padding: 0 13px; }
       .app-shell.rail-open .rail-label { display: inline; }
 
@@ -182,25 +206,37 @@
       .overview-head { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
       .overview-head h2 { margin: 0; font-size: clamp(21px, 2vw, 28px); letter-spacing: -.045em; }
       .overview-head p { margin: 7px 0 0; color: var(--muted); font-size: 12px; }
-      .preview-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+      .preview-grid { display: grid; grid-template-columns: minmax(360px, .82fr) minmax(480px, 1.18fr); grid-template-rows: minmax(250px, auto) minmax(300px, auto); gap: 18px; }
       .preview-card {
-        min-height: 330px; display: flex; flex-direction: column; overflow: hidden; position: relative;
+        min-height: 250px; display: flex; flex-direction: column; overflow: hidden; position: relative;
         border: 1px solid var(--line); border-radius: 24px; background: linear-gradient(155deg, var(--panel) 0%, var(--panel-soft) 100%);
-        box-shadow: var(--shadow-medium); transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+        box-shadow: var(--shadow-medium); transition: box-shadow 180ms ease, border-color 180ms ease;
       }
       .preview-card::after { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.22); content: ""; }
-      .preview-card:hover { z-index: 1; transform: translateY(-5px); border-color: var(--accent); box-shadow: var(--shadow-elevated); }
-      .preview-card:active { transform: translateY(-1px); }
-      .preview-card:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; box-shadow: var(--shadow-elevated); }
+      .calendar-preview-card { grid-row: 1 / span 2; min-height: 568px; }
+      .pulse-preview-card { grid-column: 2; grid-row: 1; }
+      .assistant-preview-card { grid-column: 2; grid-row: 2; }
       .preview-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 20px 16px; border-bottom: 1px solid var(--divider); }
       .preview-heading { display: flex; align-items: center; gap: 10px; }
       .preview-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; color: var(--accent-dark); background: var(--accent-soft); box-shadow: var(--shadow-low); font-weight: 760; }
       .preview-title { display: block; font-size: 14px; font-weight: 730; }
+      .preview-title-link { display: block; border-radius: 6px; }
+      .preview-title-link:hover .preview-title, .preview-title-link:focus-visible .preview-title { color: var(--accent); }
+      .preview-title-link:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
       .preview-kicker { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; font-weight: 680; text-transform: uppercase; letter-spacing: .04em; }
       .preview-arrow { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 10px; color: var(--accent); background: var(--accent-soft); font-size: 14px; }
+      .pulse-preview-card .preview-arrow { width: auto; padding: 0 9px; font-size: 8px; font-weight: 760; letter-spacing: .05em; text-transform: uppercase; }
       .preview-body { flex: 1; padding: 20px; }
+      .preview-calendar-actions { display: flex; gap: 7px; }
+      .preview-calendar-actions .icon-button { width: 30px; height: 30px; }
+      .preview-week-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; margin: -4px 0 13px; }
+      .preview-day { min-width: 0; padding: 7px 2px; border: 0; border-radius: 9px; cursor: pointer; color: var(--muted); background: transparent; font-size: 8px; font-weight: 700; text-align: center; }
+      .preview-day strong { display: block; margin-top: 5px; color: var(--ink); font-size: 11px; }
+      .preview-day:hover { background: var(--hover); }
+      .preview-day.active { color: var(--accent-dark); background: var(--accent-soft); box-shadow: var(--shadow-low); }
       .preview-list { display: grid; gap: 10px; }
-      .preview-event { display: grid; grid-template-columns: auto 4px minmax(0,1fr); gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--divider); }
+      .preview-event { width: 100%; display: grid; grid-template-columns: auto 4px minmax(0,1fr); gap: 10px; align-items: center; padding: 9px 3px; border: 0; border-bottom: 1px solid var(--divider); cursor: pointer; color: inherit; background: transparent; text-align: left; }
+      .preview-event:hover { border-radius: 10px; background: var(--hover); }
       .preview-event:last-child { border-bottom: 0; }
       .preview-time { color: var(--muted); font-size: 10px; }
       .preview-bar { width: 4px; height: 34px; border-radius: 4px; background: var(--accent); }
@@ -216,6 +252,11 @@
       .preview-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 15px; color: var(--muted); font-size: 9px; }
       .preview-status strong { color: var(--green); font-size: 9px; }
       .preview-empty { display: grid; min-height: 145px; place-items: center; color: var(--muted); text-align: center; font-size: 11px; line-height: 1.5; }
+      .preview-add { width: 100%; margin-top: 12px; }
+      .preview-composer { display: grid; grid-template-columns: minmax(0,1fr) 36px; gap: 8px; margin-top: 14px; }
+      .preview-composer input { min-width: 0; height: 38px; padding: 0 12px; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: var(--panel); box-shadow: var(--shadow-low); font-size: 10px; }
+      .preview-composer input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-low); }
+      .preview-composer .send { width: 36px; height: 38px; }
       .calendar-panel { display: flex; flex-direction: column; }
       .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 22px 24px 18px; border-bottom: 1px solid var(--divider); }
       .panel-title { margin: 0; font-size: 17px; letter-spacing: -.025em; }
@@ -327,8 +368,9 @@
       .event-form[aria-busy="true"] { opacity: .72; }
 
       @media (max-width: 1080px) {
-        .preview-grid { grid-template-columns: 1fr 1fr; }
-        .preview-card:first-child { grid-column: 1 / -1; min-height: 280px; }
+        .preview-grid { grid-template-columns: 1fr; grid-template-rows: auto; }
+        .calendar-preview-card, .pulse-preview-card, .assistant-preview-card { grid-column: auto; grid-row: auto; min-height: 280px; }
+        .calendar-preview-card { min-height: 520px; }
         .calendar-panel { min-height: 600px; }
         .analytics-panel { min-height: 260px; }
         .chat-panel { min-height: 480px; }
@@ -336,7 +378,7 @@
       @media (max-width: 700px) {
         .app-shell { grid-template-columns: 1fr; padding-bottom: 66px; }
         .rail { position: fixed; inset: auto 0 0; width: 100%; height: 66px; flex-direction: row; justify-content: space-around; padding: 8px 14px; }
-        .rail-brand, .rail-spacer, .avatar { display: none; }
+        .rail-brand, .rail-spacer, .profile-wrap { display: none; }
         .rail-nav { width: 100%; grid-template-columns: repeat(5, 1fr); margin: 0; }
         .rail-button { margin: auto; }
         .rail-button.active::before { left: 50%; top: -8px; width: 20px; height: 3px; transform: translateX(-50%); border-radius: 0 0 4px 4px; }
@@ -351,7 +393,8 @@
         .context-strip { grid-template-columns: 1fr 1fr; }
         .panel { border-radius: 19px; box-shadow: var(--shadow-medium); }
         .preview-grid { grid-template-columns: 1fr; }
-        .preview-card, .preview-card:first-child { grid-column: auto; min-height: 280px; border-radius: 19px; }
+        .preview-card { grid-column: auto; min-height: 280px; border-radius: 19px; }
+        .calendar-preview-card { min-height: 480px; }
         .panel-head { padding: 18px; }
         .week-strip { padding-inline: 8px; }
         .day strong { width: 29px; height: 29px; }
@@ -383,7 +426,21 @@
           <button class="rail-button" id="settings-button" type="button" aria-label="Settings"><span class="rail-icon">⚙</span><span class="rail-label">Settings</span></button>
         </nav>
         <div class="rail-spacer"></div>
-        <div class="avatar" id="avatar" aria-label="Signed in">A</div>
+        <div class="profile-wrap">
+          <button class="avatar" id="avatar" type="button" aria-label="Open profile menu" aria-haspopup="menu" aria-expanded="false">A</button>
+          <div class="profile-menu" id="profile-menu" role="menu" aria-label="Profile options">
+            <div class="profile-summary">
+              <span class="profile-summary-avatar" id="profile-menu-avatar">A</span>
+              <span class="profile-summary-copy"><strong id="profile-menu-name">Your account</strong><span id="profile-menu-email"></span></span>
+            </div>
+            <div class="profile-menu-items">
+              <button class="profile-menu-item" id="account-menu-button" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">◎</span><span>Account</span></button>
+              <button class="profile-menu-item" id="profile-settings-button" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">⚙</span><span>Settings</span></button>
+              <button class="profile-menu-item" id="invite-menu-button" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">＋</span><span>Invite a friend</span></button>
+              <button class="profile-menu-item danger" id="logout-menu-button" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">↪</span><span>Log out</span></button>
+            </div>
+          </div>
+        </div>
       </aside>
 
       <main class="workspace" id="top">
@@ -413,18 +470,18 @@
           <section class="dashboard-overview widget-view" id="dashboard" data-widget-view="dashboard" aria-labelledby="dashboard-title">
             <header class="overview-head"><div><h2 id="dashboard-title" class="panel-title" tabindex="-1">Your command centre</h2><p>A live view of your time, momentum and planning support.</p></div></header>
             <div class="preview-grid">
-              <a class="preview-card" href="#calendar" data-preview-view="calendar" aria-label="Open Calendar">
-                <div class="preview-head"><div class="preview-heading"><span class="preview-icon">□</span><span><span class="preview-title">Calendar</span><span class="preview-kicker" id="calendar-preview-kicker">This week</span></span></div><span class="preview-arrow" aria-hidden="true">→</span></div>
-                <div class="preview-body" id="calendar-preview"><div class="preview-empty">Loading your next events…</div></div>
-              </a>
-              <a class="preview-card" href="#weekly-pulse" data-preview-view="weekly-pulse" aria-label="Open Weekly Pulse">
-                <div class="preview-head"><div class="preview-heading"><span class="preview-icon">↗</span><span><span class="preview-title">Weekly Pulse</span><span class="preview-kicker">Your momentum</span></span></div><span class="preview-arrow" aria-hidden="true">→</span></div>
+              <article class="preview-card calendar-preview-card">
+                <div class="preview-head"><div class="preview-heading"><span class="preview-icon">□</span><a class="preview-title-link" href="#calendar" data-preview-view="calendar"><span class="preview-title">Calendar</span><span class="preview-kicker" id="calendar-preview-kicker">This week</span></a></div><div class="preview-calendar-actions"><button class="icon-button" id="dashboard-previous-week" type="button" aria-label="Previous week">←</button><button class="icon-button" id="dashboard-next-week" type="button" aria-label="Next week">→</button></div></div>
+                <div class="preview-body"><div class="preview-week-strip" id="dashboard-week-strip" role="group" aria-label="Choose a dashboard calendar day"></div><div id="calendar-preview"><div class="preview-empty">Loading your events…</div></div><button class="button preview-add" id="dashboard-add-event" type="button">Add to plan</button></div>
+              </article>
+              <article class="preview-card pulse-preview-card">
+                <div class="preview-head"><div class="preview-heading"><span class="preview-icon">↗</span><a class="preview-title-link" href="#weekly-pulse" data-preview-view="weekly-pulse"><span class="preview-title">Weekly Pulse</span><span class="preview-kicker">Your momentum</span></a></div><span class="preview-arrow" aria-hidden="true">Live</span></div>
                 <div class="preview-body" id="pulse-preview"><div class="preview-empty">Calculating your weekly pulse…</div></div>
-              </a>
-              <a class="preview-card" href="#assistant" data-preview-view="assistant" aria-label="Open AI Assistant">
-                <div class="preview-head"><div class="preview-heading"><span class="preview-icon">✦</span><span><span class="preview-title">AI Assistant</span><span class="preview-kicker">Planning support</span></span></div><span class="preview-arrow" aria-hidden="true">→</span></div>
-                <div class="preview-body" id="assistant-preview"><div class="preview-empty">Preparing your planning assistant…</div></div>
-              </a>
+              </article>
+              <article class="preview-card assistant-preview-card">
+                <div class="preview-head"><div class="preview-heading"><span class="preview-icon">✦</span><a class="preview-title-link" href="#assistant" data-preview-view="assistant"><span class="preview-title">AI Assistant</span><span class="preview-kicker">Planning support</span></a></div><span class="assistant-state" id="dashboard-assistant-state">Ready</span></div>
+                <div class="preview-body"><div id="assistant-preview"><div class="preview-empty">Preparing your planning assistant…</div></div><form class="preview-composer" id="dashboard-composer"><label for="dashboard-chat-input" style="position:absolute;left:-9999px">Message Arcadia from the dashboard</label><input id="dashboard-chat-input" placeholder="Ask Arcadia to plan or adjust…" maxlength="2000" autocomplete="off" /><button class="send" id="dashboard-send-button" type="submit" aria-label="Send dashboard message">↑</button></form></div>
+              </article>
             </div>
           </section>
 
@@ -513,6 +570,10 @@
     <dialog id="settings-dialog" aria-labelledby="settings-title">
       <div class="modal-head"><h2 id="settings-title">Connections</h2><button class="close-button" type="button" data-close="settings-dialog" aria-label="Close">×</button></div>
       <div class="settings-body"><div class="connection-card"><strong>Google Calendar</strong><p id="google-detail">Connect your calendars so Arcadia can plan around real commitments. Arcadia only writes study blocks to its own Google calendar.</p><div class="top-actions"><button class="button primary" id="google-connect" type="button">Connect Google</button><button class="button danger" id="google-disconnect" type="button" hidden>Disconnect</button></div></div></div>
+    </dialog>
+    <dialog id="account-dialog" aria-labelledby="account-title">
+      <div class="modal-head"><h2 id="account-title">Account</h2><button class="close-button" type="button" data-close="account-dialog" aria-label="Close">×</button></div>
+      <div class="settings-body"><div class="connection-card"><strong id="account-name">Your Arcadia account</strong><p id="account-email">Signed in to Arcadia</p><p>Your plan, calendar connections, and preferences stay tied to this account.</p></div></div>
     </dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script type="module" src="/dashboard.js"></script>
