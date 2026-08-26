@@ -43,15 +43,24 @@ test("serves Today as the private Arcadia home without hardcoded demo work", asy
   assert.doesNotMatch(html, /Economics lecture|Calculus problem set|Easy run/);
 });
 
-test("uses Today, Schedule and AI Mentor as the primary shared-data navigation", async () => {
+test("uses all five Arcadia destinations in the intended navigation order", async () => {
   const response = await worker.fetch(new Request("https://arcadia.test/", { headers: authHeaders() }), {}, {});
   const html = await response.text();
   const navigation = html.slice(html.indexOf('<nav class="rail-nav"'), html.indexOf('</nav>'));
   assert.ok(navigation.indexOf('data-view="today"') < navigation.indexOf('data-view="schedule"'));
-  assert.ok(navigation.indexOf('data-view="schedule"') < navigation.indexOf('data-view="mentor"'));
+  assert.ok(navigation.indexOf('data-view="schedule"') < navigation.indexOf('data-view="analytics"'));
+  assert.ok(navigation.indexOf('data-view="analytics"') < navigation.indexOf('data-view="study-group"'));
+  assert.ok(navigation.indexOf('data-view="study-group"') < navigation.indexOf('data-view="mentor"'));
+  assert.doesNotMatch(navigation, /settings-button/);
+  assert.match(html, /id="account-menu"[^>]*role="menu"[^>]*hidden/);
+  assert.match(html, /id="account-settings-button"/);
   assert.match(html, /data-view-panel="today"/);
   assert.match(html, /data-view-panel="schedule"[^>]*hidden/);
+  assert.match(html, /data-view-panel="analytics"[^>]*hidden/);
+  assert.match(html, /data-view-panel="study-group"[^>]*hidden/);
   assert.match(html, /data-view-panel="mentor"[^>]*hidden/);
+  assert.match(html, /Create group · Coming soon/);
+  assert.match(html, /Join group · Coming soon/);
   assert.match(html, /id="onboarding-dialog"/);
 });
 
@@ -59,10 +68,25 @@ test("defaults client navigation to Today and uses persisted dashboard data", as
   const response = await worker.fetch(new Request("https://arcadia.test/dashboard.js"), {}, {});
   assert.equal(response.status, 200);
   const script = await response.text();
-  assert.match(script, /\['today', 'schedule', 'mentor'\]/);
+  assert.match(script, /\['today', 'schedule', 'analytics', 'study-group', 'mentor'\]/);
   assert.match(script, /#today/);
   assert.match(script, /\/api\/dashboard/);
+  assert.match(script, /\/api\/analytics\?period=/);
   assert.doesNotMatch(script, /Economics lecture|Calculus problem set/);
+});
+
+test("loads the focused Lucide subset without module-only browser imports", async () => {
+  const page = await worker.fetch(new Request("https://arcadia.test/", { headers: authHeaders() }), {}, {});
+  const html = await page.text();
+  assert.match(html, /<script defer src="\.\/lucide-icons\.js"><\/script>\s*<script defer src="\.\/dashboard\.js"><\/script>/);
+  assert.doesNotMatch(html, /type="module"/);
+
+  const response = await worker.fetch(new Request("https://arcadia.test/lucide-icons.js"), {}, {});
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /text\/javascript/);
+  const script = await response.text();
+  assert.match(script, /window\.ArcadiaLucide/);
+  assert.doesNotMatch(script, /\bexport\s+(?:const|function)/);
 });
 
 test("serves Arcadia brand and sharing images", async () => {
@@ -128,6 +152,49 @@ test("derives persistent completion analytics from real study sessions", async (
   assert.equal(analytics.focusedMinutes, 90);
   assert.equal(analytics.completionRate, 100);
   assert.equal(analytics.completedCount, 1);
+});
+
+test("serves timezone-aware day, week, and month analytics ranges", async () => {
+  const env = { DB: new TestD1() };
+  await ensureDatabase(env);
+  await upsertProfile(env, { id: "periods", email: "periods@example.com", name: "Periods" });
+  const event = await createEvent(env, "periods", { title: "Biology review", kind: "study", subject: "Biology", startAt: "2026-08-25T02:00:00.000Z", endAt: "2026-08-25T03:00:00.000Z" });
+  await completeEvent(env, "periods", event.id);
+
+  const dayResponse = await worker.fetch(new Request("https://arcadia.test/api/analytics?period=day&date=2026-08-25T02:00:00.000Z", { headers: authHeaders("periods") }), env, {});
+  assert.equal(dayResponse.status, 200);
+  const day = await dayResponse.json();
+  assert.equal(day.period, "day");
+  assert.deepEqual(day.range, { start: "2026-08-24T14:00:00.000Z", end: "2026-08-25T14:00:00.000Z" });
+  assert.equal(day.analytics.focusedMinutes, 60);
+  assert.equal(day.analytics.capacityMinutes, 120);
+
+  const weekResponse = await worker.fetch(new Request("https://arcadia.test/api/analytics?period=week&date=2026-08-25T02:00:00.000Z", { headers: authHeaders("periods") }), env, {});
+  const week = await weekResponse.json();
+  assert.equal(week.period, "week");
+  assert.deepEqual(week.range, { start: "2026-08-23T14:00:00.000Z", end: "2026-08-30T14:00:00.000Z" });
+  assert.equal(week.analytics.capacityMinutes, 1200);
+
+  const monthResponse = await worker.fetch(new Request("https://arcadia.test/api/analytics?period=month&date=2026-10-15T00:00:00.000Z", { headers: authHeaders("periods") }), env, {});
+  const month = await monthResponse.json();
+  assert.equal(month.period, "month");
+  assert.deepEqual(month.range, { start: "2026-09-30T14:00:00.000Z", end: "2026-10-31T13:00:00.000Z" });
+  assert.equal(month.analytics.capacityMinutes, 31 * 180);
+});
+
+test("keeps weekly analytics as the API default and rejects invalid filters", async () => {
+  const env = { DB: new TestD1() };
+  const defaultResponse = await worker.fetch(new Request("https://arcadia.test/api/analytics?date=2026-08-25T02:00:00.000Z", { headers: authHeaders("defaults") }), env, {});
+  assert.equal(defaultResponse.status, 200);
+  assert.equal((await defaultResponse.json()).period, "week");
+
+  const badPeriod = await worker.fetch(new Request("https://arcadia.test/api/analytics?period=term", { headers: authHeaders("defaults") }), env, {});
+  assert.equal(badPeriod.status, 400);
+  assert.match((await badPeriod.json()).error, /day, week, or month/);
+
+  const badDate = await worker.fetch(new Request("https://arcadia.test/api/analytics?period=day&date=not-a-date", { headers: authHeaders("defaults") }), env, {});
+  assert.equal(badDate.status, 400);
+  assert.match((await badDate.json()).error, /valid analytics date/);
 });
 
 test("applies an approved Mentor move exactly once", async () => {

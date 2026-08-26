@@ -35,7 +35,7 @@ function arcadiaDevWorker() {
     configureServer(server) {
       server.middlewares.use(async (incoming, outgoing, next) => {
         const path = (incoming.url || "/").split("?")[0];
-        if (!(path === "/" || path === "/dashboard" || path === "/dashboard.js" || path.startsWith("/api/") || /\.(?:png)$/.test(path))) return next();
+        if (!(path === "/" || path === "/dashboard" || path === "/dashboard.js" || path === "/lucide-icons.js" || path.startsWith("/api/") || /\.(?:png)$/.test(path))) return next();
         try {
           const origin = `http://${incoming.headers.host || "127.0.0.1:5173"}`;
           const body = ["GET", "HEAD"].includes(incoming.method || "GET") ? undefined : Buffer.concat(await readBody(incoming));

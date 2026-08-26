@@ -376,7 +376,7 @@ export async function completeEvent(env, userId, id) {
   return getEvent(env, userId, id);
 }
 
-export async function getAnalytics(env, userId, start, end) {
+export async function getAnalytics(env, userId, start, end, capacityDays = 7) {
   const [rows, activity, preferences] = await Promise.all([
     listEvents(env, userId, start, end), listActivity(env, userId, { start, end, limit: 250 }), getPreferences(env, userId)
   ]);
@@ -386,6 +386,7 @@ export async function getAnalytics(env, userId, start, end) {
   const completedActivities = activity.filter((item) => item.outcome === "completed");
   const focusedMinutes = completedStudy.reduce((sum, event) => sum + minutesBetween(event.startAt, event.endAt), 0);
   const plannedMinutes = study.filter((event) => event.outcome === "planned").reduce((sum, event) => sum + minutesBetween(event.startAt, event.endAt), 0);
+  const scheduledMinutes = study.reduce((sum, event) => sum + minutesBetween(event.startAt, event.endAt), 0);
   const denominator = completedActivities.length + missed + study.filter((event) => event.outcome === "planned").length;
   const subjects = new Map();
   for (const event of completedStudy) {
@@ -402,7 +403,7 @@ export async function getAnalytics(env, userId, start, end) {
     missedCount: missed,
     plannedCount: denominator,
     currentStreak: completionStreak(activity),
-    capacityMinutes: Math.max(0, Number(preferences.maxDailyStudyMinutes || 180) * 7 - plannedMinutes),
+    capacityMinutes: Math.max(0, Number(preferences.maxDailyStudyMinutes || 180) * Math.max(1, Number(capacityDays) || 7) - scheduledMinutes),
     subjectDistribution
   };
 }

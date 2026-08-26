@@ -1,5 +1,6 @@
 import dashboardHtml from "../dashboard.html?raw";
 import dashboardScript from "../dashboard.js?raw";
+import lucideIconsScript from "../lucide-icons.js?raw";
 import arcadiaLogo from "../arcadia-logo-original.png?inline";
 import arcadiaMark from "../arcadia-mark.png?inline";
 import arcadiaMarkTransparent from "../arcadia-mark-transparent.png?inline";
@@ -16,7 +17,7 @@ import {
   removePublishedEvent, syncGoogleCalendars
 } from "./google.js";
 import { applyProposal, chatStream, declineProposal, mentorAvailable } from "./openai.js";
-import { buildBriefing, focusTasks, rebuildSchedule } from "./scheduler.js";
+import { buildBriefing, dateKeyInZone, focusTasks, rebuildSchedule, zonedDateTime } from "./scheduler.js";
 
 const htmlHeaders = {
   "cache-control": "private, no-store",
@@ -42,6 +43,7 @@ export default {
     }
     if (url.pathname === "/dashboard") return Response.redirect(`${url.origin}/`, 308);
     if (url.pathname === "/dashboard.js") return new Response(dashboardScript, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "private, no-store" } });
+    if (url.pathname === "/lucide-icons.js") return new Response(lucideIconsScript, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "private, no-store" } });
     const imageAsset = imageAssets.get(url.pathname);
     if (imageAsset) return new Response(decodeDataUrl(imageAsset), { headers: { "cache-control": "public, max-age=31536000, immutable", "content-type": "image/png" } });
     if (!url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
@@ -118,8 +120,13 @@ async function routeApi(request, env, context, url, authenticatedUser) {
   }
 
   if (method === "GET" && path === "/api/analytics") {
-    const range = weekRange(url.searchParams.get("date") || new Date());
-    return json({ range, analytics: await getAnalytics(env, authenticatedUser.id, range.start, range.end) });
+    const period = url.searchParams.get("period") || "week";
+    if (!["day", "week", "month"].includes(period)) throw badRequest("Choose day, week, or month for the analytics period.");
+    const planner = await getPlannerData(env, authenticatedUser.id);
+    const timezone = planner.profile?.timezone || "Australia/Sydney";
+    const range = analyticsRange(url.searchParams.get("date") || new Date(), period, timezone);
+    const analytics = await getAnalytics(env, authenticatedUser.id, range.start, range.end, range.days);
+    return json({ period, range: { start: range.start, end: range.end }, analytics });
   }
 
   if (path === "/api/events" && method === "POST") {
@@ -302,6 +309,35 @@ function validateEvent(body) {
   if (recurrence && !/^RRULE:/i.test(recurrence)) throw badRequest("Recurrence must use an RRULE value.");
   return { title, kind, category, startAt: start.toISOString(), endAt: end.toISOString(), allDay: Boolean(body.allDay), recurrence,
     description: text(body.description, 1000), subject: text(body.subject, 80) || null, location: text(body.location, 160) || null };
+}
+
+export function analyticsRange(value, period = "week", timezone = "Australia/Sydney") {
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) throw badRequest("Choose a valid analytics date.");
+  if (!["day", "week", "month"].includes(period)) throw badRequest("Choose day, week, or month for the analytics period.");
+  let startKey = dateKeyInZone(date, timezone);
+  let days = 1;
+  if (period === "week") {
+    const weekday = (new Date(`${startKey}T00:00:00.000Z`).getUTCDay() + 6) % 7;
+    startKey = shiftDateKey(startKey, -weekday);
+    days = 7;
+  } else if (period === "month") {
+    const [year, month] = startKey.split("-").map(Number);
+    startKey = `${year}-${String(month).padStart(2, "0")}-01`;
+    days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  }
+  const endKey = shiftDateKey(startKey, days);
+  return {
+    start: zonedDateTime(startKey, "00:00", timezone).toISOString(),
+    end: zonedDateTime(endKey, "00:00", timezone).toISOString(),
+    days
+  };
+}
+
+function shiftDateKey(dateKey, days) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + days));
+  return shifted.toISOString().slice(0, 10);
 }
 
 async function findConflicts(env, userId, input, excludeId) {

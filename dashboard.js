@@ -1,6 +1,11 @@
+const { createIcons, icons: lucideIcons } = window.ArcadiaLucide;
+
 const state = {
   data: null,
   anchorDate: new Date(),
+  analyticsDate: new Date(),
+  analyticsPeriod: 'day',
+  analyticsRequest: 0,
   activeView: 'today',
   loading: false,
   saving: false
@@ -10,11 +15,14 @@ const elements = {
   shell: document.querySelector('.app-shell'), workspace: document.querySelector('.workspace'),
   viewButtons: [...document.querySelectorAll('[data-view]')], views: [...document.querySelectorAll('[data-view-panel]')],
   pageTitle: document.querySelector('#page-title'), pageEyebrow: document.querySelector('#page-eyebrow'),
-  avatar: document.querySelector('#avatar'), briefing: document.querySelector('#briefing'),
+  avatar: document.querySelector('#avatar'), accountMenu: document.querySelector('#account-menu'), briefing: document.querySelector('#briefing'),
   todayTimeline: document.querySelector('#today-timeline'), todaySummary: document.querySelector('#today-summary'),
   todayLoad: document.querySelector('#today-load'), focusList: document.querySelector('#focus-list'),
   progressMetrics: document.querySelector('#progress-metrics'), taskList: document.querySelector('#task-list'),
   weekLabel: document.querySelector('#week-label'), weekBoard: document.querySelector('#week-board'),
+  analyticsContent: document.querySelector('#analytics-content'), analyticsMetrics: document.querySelector('#analytics-metrics'),
+  analyticsRangeLabel: document.querySelector('#analytics-range-label'), subjectDistribution: document.querySelector('#subject-distribution'),
+  analyticsNote: document.querySelector('#analytics-note'), analyticsPeriodButtons: [...document.querySelectorAll('[data-analytics-period]')],
   messages: document.querySelector('#messages'), proposals: document.querySelector('#proposals'),
   mentorStatus: document.querySelector('#mentor-status'), mentorContext: document.querySelector('#mentor-context'),
   composer: document.querySelector('#composer'), chatInput: document.querySelector('#chat-input'), send: document.querySelector('#send-button'),
@@ -30,6 +38,7 @@ const elements = {
 
 document.documentElement.dataset.theme = preferredTheme();
 bindControls();
+renderIcons();
 activateView(viewFromHash());
 loadDashboard();
 
@@ -46,11 +55,15 @@ function bindControls() {
     const button = document.querySelector('#rail-toggle');
     button.setAttribute('aria-expanded', String(open));
     button.setAttribute('aria-label', open ? 'Collapse navigation' : 'Expand navigation');
+    setIcon(button, open ? 'panel-left-close' : 'panel-left-open');
   });
   elements.viewButtons.forEach((button) => button.addEventListener('click', () => { location.hash = button.dataset.view; }));
   window.addEventListener('hashchange', () => activateView(viewFromHash()));
-  elements.avatar.addEventListener('click', () => elements.settingsDialog.showModal());
-  document.querySelector('#settings-button').addEventListener('click', () => elements.settingsDialog.showModal());
+  elements.avatar.addEventListener('click', (event) => { event.stopPropagation(); toggleAccountMenu(); });
+  document.querySelector('#account-settings-button').addEventListener('click', () => { closeAccountMenu(); elements.settingsDialog.showModal(); });
+  document.querySelector('#account-sign-out-button').addEventListener('click', () => location.assign('/signout-with-chatgpt?return_to=/'));
+  document.addEventListener('click', (event) => { if (!event.target.closest('.avatar-wrap')) closeAccountMenu(); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !elements.accountMenu.hidden) { closeAccountMenu(); elements.avatar.focus(); } });
   document.querySelector('#life-setup-button').addEventListener('click', openLifeSetup);
   document.querySelector('#edit-life-button').addEventListener('click', () => { elements.settingsDialog.close(); openLifeSetup(); });
   document.querySelector('#add-task-button').addEventListener('click', openTaskDialog);
@@ -58,6 +71,14 @@ function bindControls() {
   document.querySelector('#previous-week').addEventListener('click', () => moveWeek(-7));
   document.querySelector('#next-week').addEventListener('click', () => moveWeek(7));
   document.querySelector('#current-week').addEventListener('click', () => { state.anchorDate = new Date(); loadDashboard(); });
+  elements.analyticsPeriodButtons.forEach((button) => button.addEventListener('click', () => {
+    if (state.analyticsPeriod === button.dataset.analyticsPeriod) return;
+    state.analyticsPeriod = button.dataset.analyticsPeriod;
+    loadAnalytics();
+  }));
+  document.querySelector('#previous-analytics').addEventListener('click', () => moveAnalytics(-1));
+  document.querySelector('#next-analytics').addEventListener('click', () => moveAnalytics(1));
+  document.querySelector('#current-analytics').addEventListener('click', () => { state.analyticsDate = new Date(); loadAnalytics(); });
   document.querySelector('#add-subject-row').addEventListener('click', () => addSubjectRow());
   document.querySelector('#add-task-row').addEventListener('click', () => addTaskRow());
   document.querySelector('#add-commitment-row').addEventListener('click', () => addCommitmentRow());
@@ -77,23 +98,24 @@ function bindControls() {
 
 function viewFromHash() {
   const requested = location.hash.slice(1);
-  if (['today', 'schedule', 'mentor'].includes(requested)) return requested;
+  if (['today', 'schedule', 'analytics', 'study-group', 'mentor'].includes(requested)) return requested;
   history.replaceState({}, '', `${location.pathname}${location.search}#today`);
   return 'today';
 }
 
 function activateView(view) {
-  state.activeView = ['today', 'schedule', 'mentor'].includes(view) ? view : 'today';
+  state.activeView = ['today', 'schedule', 'analytics', 'study-group', 'mentor'].includes(view) ? view : 'today';
   elements.views.forEach((panel) => { panel.hidden = panel.dataset.viewPanel !== state.activeView; });
   elements.viewButtons.forEach((button) => {
     const active = button.dataset.view === state.activeView;
     button.classList.toggle('active', active);
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
-  const titles = { today: 'Today', schedule: 'Schedule', mentor: 'AI Mentor' };
+  const titles = { today: 'Today', schedule: 'Schedule', analytics: 'Analytics', 'study-group': 'Study Group', mentor: 'AI Mentor' };
   elements.pageTitle.textContent = titles[state.activeView];
   document.title = `${titles[state.activeView]} · Arcadia`;
   updateHeader();
+  if (state.activeView === 'analytics') loadAnalytics();
 }
 
 async function loadDashboard() {
@@ -116,7 +138,9 @@ function renderAll() {
   const { user } = state.data;
   const initials = user.name.split(/\s|@/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'A';
   elements.avatar.textContent = initials;
-  elements.avatar.setAttribute('aria-label', `Open settings for ${user.name}`);
+  elements.avatar.setAttribute('aria-label', `Open account menu for ${user.name}`);
+  document.querySelector('#account-menu-name').textContent = user.name;
+  document.querySelector('#account-menu-email').textContent = user.email || 'Arcadia account';
   document.querySelector('#account-name').textContent = user.name;
   document.querySelector('#account-email').textContent = user.email;
   updateHeader();
@@ -135,10 +159,91 @@ function updateHeader() {
   } else if (state.activeView === 'schedule') {
     elements.pageEyebrow.textContent = range ? `Week of ${zonedDate(range.start, user.timezone, { day: 'numeric', month: 'long' })}` : 'Weekly plan';
     elements.pageTitle.textContent = 'Schedule';
+  } else if (state.activeView === 'analytics') {
+    elements.pageEyebrow.textContent = 'Your study patterns';
+    elements.pageTitle.textContent = 'Analytics';
+  } else if (state.activeView === 'study-group') {
+    elements.pageEyebrow.textContent = 'Study with your people';
+    elements.pageTitle.textContent = 'Study Group';
   } else {
     elements.pageEyebrow.textContent = 'Plan, recover, adapt';
     elements.pageTitle.textContent = 'AI Mentor';
   }
+}
+
+async function loadAnalytics() {
+  const requestId = ++state.analyticsRequest;
+  const period = state.analyticsPeriod;
+  updateAnalyticsControls();
+  elements.analyticsContent.setAttribute('aria-busy', 'true');
+  elements.analyticsContent.classList.add('loading');
+  try {
+    const result = await api(`/api/analytics?period=${encodeURIComponent(period)}&date=${encodeURIComponent(state.analyticsDate.toISOString())}`);
+    if (requestId !== state.analyticsRequest) return;
+    renderAnalytics(result);
+  } catch (error) {
+    if (requestId !== state.analyticsRequest) return;
+    elements.analyticsMetrics.innerHTML = `<div class="analytics-card"><span>Analytics unavailable</span><strong>—</strong><small>${escapeHtml(error.message)}</small></div>`;
+    elements.subjectDistribution.innerHTML = emptyState('Could not load progress', error.message);
+    elements.analyticsNote.innerHTML = '<p>Your schedule is still safe. Try this view again in a moment.</p>';
+  } finally {
+    if (requestId === state.analyticsRequest) {
+      elements.analyticsContent.setAttribute('aria-busy', 'false');
+      elements.analyticsContent.classList.remove('loading');
+    }
+  }
+}
+
+function renderAnalytics({ period, range, analytics }) {
+  const timezone = state.data?.user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  elements.analyticsRangeLabel.textContent = analyticsRangeText(period, range, timezone);
+  elements.analyticsMetrics.innerHTML = [
+    analyticsMetric('Focused time', formatDuration(analytics.focusedMinutes), analytics.focusedMinutes ? 'Completed study sessions' : 'No completed study yet'),
+    analyticsMetric('Completion', `${analytics.completionRate}%`, analytics.plannedCount ? `${analytics.completedCount} of ${analytics.plannedCount} sessions` : 'No sessions in this period'),
+    analyticsMetric('Completed', analytics.completedCount, analytics.completedCount === 1 ? 'Study session' : 'Study sessions'),
+    analyticsMetric('Missed', analytics.missedCount, analytics.missedCount ? 'Ready to replan' : 'Nothing missed'),
+    analyticsMetric('Current streak', analytics.currentStreak, analytics.currentStreak === 1 ? 'Day' : 'Days'),
+    analyticsMetric('Capacity left', formatDuration(analytics.capacityMinutes), 'After scheduled study blocks')
+  ].join('');
+
+  elements.subjectDistribution.innerHTML = '';
+  const subjects = analytics.subjectDistribution || [];
+  if (!subjects.length) {
+    elements.subjectDistribution.innerHTML = emptyState('No completed study yet', 'Complete a study block in this period to see your subject balance.');
+  } else {
+    const maximum = Math.max(...subjects.map((subject) => subject.minutes), 1);
+    subjects.forEach((subject) => {
+      const row = document.createElement('div'); row.className = 'subject-row';
+      const width = Math.max(4, Math.round((subject.minutes / maximum) * 100));
+      row.innerHTML = `<strong>${escapeHtml(subject.subject)}</strong><div class="subject-bar-track" role="img" aria-label="${escapeAttr(subject.subject)} ${escapeAttr(formatDuration(subject.minutes))}"><div class="subject-bar" style="width:${width}%"></div></div><span>${formatDuration(subject.minutes)}</span>`;
+      elements.subjectDistribution.append(row);
+    });
+  }
+
+  const summary = analytics.focusedMinutes
+    ? `You completed <strong>${formatDuration(analytics.focusedMinutes)}</strong> of focused study with a <strong>${analytics.completionRate}% completion rate</strong>. ${analytics.missedCount ? `${analytics.missedCount} missed session${analytics.missedCount === 1 ? '' : 's'} can be replanned with your Mentor.` : 'Nothing was marked missed in this period.'}`
+    : `There is no completed study in this period yet. You still have <strong>${formatDuration(analytics.capacityMinutes)}</strong> of unplanned capacity available.`;
+  elements.analyticsNote.innerHTML = `<p>${summary}</p>`;
+}
+
+function analyticsMetric(label, value, detail) {
+  return `<div class="analytics-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(detail)}</small></div>`;
+}
+
+function updateAnalyticsControls() {
+  const labels = { day: 'Today', week: 'This week', month: 'This month' };
+  elements.analyticsPeriodButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.analyticsPeriod === state.analyticsPeriod)));
+  document.querySelector('#current-analytics').textContent = labels[state.analyticsPeriod];
+  document.querySelector('#previous-analytics').setAttribute('aria-label', `Previous ${state.analyticsPeriod}`);
+  document.querySelector('#next-analytics').setAttribute('aria-label', `Next ${state.analyticsPeriod}`);
+}
+
+function moveAnalytics(direction) {
+  const next = new Date(state.analyticsDate);
+  if (state.analyticsPeriod === 'month') { next.setUTCDate(1); next.setUTCMonth(next.getUTCMonth() + direction); }
+  else next.setUTCDate(next.getUTCDate() + direction * (state.analyticsPeriod === 'week' ? 7 : 1));
+  state.analyticsDate = next;
+  loadAnalytics();
 }
 
 function renderToday() {
@@ -176,9 +281,10 @@ function timelineItem(event) {
   item.className = `timeline-item ${categoryClass(event)}${event.outcome === 'completed' ? ' completed' : ''}`;
   const detail = [event.subject, event.location, formatDuration(minutesBetween(event.startAt, event.endAt))].filter(Boolean).join(' · ');
   const actionHtml = event.category === 'study' && event.outcome === 'planned'
-    ? `<div class="timeline-actions"><button class="outcome-button complete" type="button" data-outcome="completed" aria-label="Mark ${escapeHtml(event.title)} complete">✓</button><button class="outcome-button missed" type="button" data-outcome="missed" aria-label="Mark ${escapeHtml(event.title)} missed">×</button></div>`
+    ? `<div class="timeline-actions"><button class="outcome-button complete" type="button" data-outcome="completed" aria-label="Mark ${escapeHtml(event.title)} complete"><i data-lucide="check" aria-hidden="true"></i></button><button class="outcome-button missed" type="button" data-outcome="missed" aria-label="Mark ${escapeHtml(event.title)} missed"><i data-lucide="x" aria-hidden="true"></i></button></div>`
     : `<span class="timeline-badge">${escapeHtml(event.outcome === 'completed' ? 'Done' : event.category)}</span>`;
   item.innerHTML = `<time class="timeline-time">${event.allDay ? 'All day' : formatTime(event.startAt, state.data.user.timezone)}</time><span class="timeline-bar"></span><div class="timeline-copy"><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(detail || event.category)}</span></div>${actionHtml}`;
+  renderIcons(item);
   item.querySelectorAll('[data-outcome]').forEach((button) => button.addEventListener('click', () => recordOutcome(event, button.dataset.outcome, item)));
   return item;
 }
@@ -321,7 +427,8 @@ function openLifeSetup({ firstRun = false } = {}) {
 
 function addSubjectRow(subject = {}) {
   const row = document.createElement('div'); row.className = 'input-row subject-input-row';
-  row.innerHTML = `<div class="field"><label>Subject name</label><input data-field="name" maxlength="80" value="${escapeAttr(subject.name || '')}" placeholder="Maths" /></div><div class="field"><label>Colour</label><input data-field="color" type="color" value="${escapeAttr(subject.color || '#8389ca')}" /></div><div class="field"><label>Priority</label><select data-field="priority"><option value="1">Low</option><option value="2">Normal</option><option value="3">High</option></select></div><button class="remove-row" type="button" aria-label="Remove subject">×</button>`;
+  row.innerHTML = `<div class="field"><label>Subject name</label><input data-field="name" maxlength="80" value="${escapeAttr(subject.name || '')}" placeholder="Maths" /></div><div class="field"><label>Colour</label><input data-field="color" type="color" value="${escapeAttr(subject.color || '#8389ca')}" /></div><div class="field"><label>Priority</label><select data-field="priority"><option value="1">Low</option><option value="2">Normal</option><option value="3">High</option></select></div><button class="remove-row" type="button" aria-label="Remove subject"><i data-lucide="x" aria-hidden="true"></i></button>`;
+  renderIcons(row);
   row.querySelector('[data-field="priority"]').value = String(subject.priority || 2);
   row.querySelector('.remove-row').addEventListener('click', () => row.remove());
   elements.subjectRows.append(row);
@@ -332,7 +439,8 @@ function addTaskRow(task = {}) {
   const dueDate = task.dueAt ? dateKeyInZone(task.dueAt, timezone) : '';
   const dueTime = task.dueAt ? zonedTime(task.dueAt, timezone) : '23:59';
   const row = document.createElement('div'); row.className = 'input-row task-input-row';
-  row.innerHTML = `<div class="field"><label>Task title</label><input data-field="title" maxlength="120" value="${escapeAttr(task.title || '')}" placeholder="English assignment" /></div><div class="field"><label>Subject</label><input data-field="subject" maxlength="80" value="${escapeAttr(task.subject || '')}" placeholder="English" /></div><div class="field"><label>Due date</label><input data-field="dueDate" type="date" value="${escapeAttr(dueDate)}" /></div><div class="field"><label>Due time</label><input data-field="dueTime" type="time" value="${escapeAttr(dueTime)}" /></div><div class="field"><label>Minutes left</label><input data-field="estimatedMinutes" type="number" min="15" max="1440" step="15" value="${escapeAttr(task.remainingMinutes || task.estimatedMinutes || 60)}" /></div><div class="field"><label>Type</label><select data-field="taskType"><option value="homework">Homework</option><option value="assignment">Assignment</option><option value="exam">Exam / test</option><option value="revision">Revision</option><option value="project">Project</option><option value="other">Other</option></select></div><div class="field"><label>Priority</label><select data-field="priority"><option value="1">Low</option><option value="2">Normal</option><option value="3">High</option></select></div><button class="remove-row" type="button" aria-label="Remove task">×</button>`;
+  row.innerHTML = `<div class="field"><label>Task title</label><input data-field="title" maxlength="120" value="${escapeAttr(task.title || '')}" placeholder="English assignment" /></div><div class="field"><label>Subject</label><input data-field="subject" maxlength="80" value="${escapeAttr(task.subject || '')}" placeholder="English" /></div><div class="field"><label>Due date</label><input data-field="dueDate" type="date" value="${escapeAttr(dueDate)}" /></div><div class="field"><label>Due time</label><input data-field="dueTime" type="time" value="${escapeAttr(dueTime)}" /></div><div class="field"><label>Minutes left</label><input data-field="estimatedMinutes" type="number" min="15" max="1440" step="15" value="${escapeAttr(task.remainingMinutes || task.estimatedMinutes || 60)}" /></div><div class="field"><label>Type</label><select data-field="taskType"><option value="homework">Homework</option><option value="assignment">Assignment</option><option value="exam">Exam / test</option><option value="revision">Revision</option><option value="project">Project</option><option value="other">Other</option></select></div><div class="field"><label>Priority</label><select data-field="priority"><option value="1">Low</option><option value="2">Normal</option><option value="3">High</option></select></div><button class="remove-row" type="button" aria-label="Remove task"><i data-lucide="x" aria-hidden="true"></i></button>`;
+  renderIcons(row);
   row.querySelector('[data-field="taskType"]').value = task.taskType || 'homework';
   row.querySelector('[data-field="priority"]').value = String(task.priority || 2);
   row.querySelector('.remove-row').addEventListener('click', () => row.remove());
@@ -341,7 +449,8 @@ function addTaskRow(task = {}) {
 
 function addCommitmentRow(commitment = {}) {
   const row = document.createElement('div'); row.className = 'input-row commitment-input-row';
-  row.innerHTML = `<div class="field"><label>Commitment</label><input data-field="title" maxlength="120" value="${escapeAttr(commitment.title || '')}" placeholder="School or football" /></div><div class="field"><label>Category</label><select data-field="category"><option value="school">School</option><option value="sport">Sport</option><option value="extracurricular">Extracurricular</option><option value="other">Other</option></select></div><div class="field"><label>Repeats</label><select data-field="recurrence"><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="none">One-off</option></select></div><div class="field"><label>Weekday</label><select data-field="weekday"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option></select></div><div class="field"><label>One-off date</label><input data-field="startDate" type="date" value="${escapeAttr(commitment.startDate || '')}" /></div><div class="field"><label>Starts</label><input data-field="startTime" type="time" value="${escapeAttr(commitment.startTime || '08:45')}" /></div><div class="field"><label>Ends</label><input data-field="endTime" type="time" value="${escapeAttr(commitment.endTime || '15:00')}" /></div><button class="remove-row" type="button" aria-label="Remove commitment">×</button>`;
+  row.innerHTML = `<div class="field"><label>Commitment</label><input data-field="title" maxlength="120" value="${escapeAttr(commitment.title || '')}" placeholder="School or football" /></div><div class="field"><label>Category</label><select data-field="category"><option value="school">School</option><option value="sport">Sport</option><option value="extracurricular">Extracurricular</option><option value="other">Other</option></select></div><div class="field"><label>Repeats</label><select data-field="recurrence"><option value="weekdays">Weekdays</option><option value="weekly">Weekly</option><option value="none">One-off</option></select></div><div class="field"><label>Weekday</label><select data-field="weekday"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option></select></div><div class="field"><label>One-off date</label><input data-field="startDate" type="date" value="${escapeAttr(commitment.startDate || '')}" /></div><div class="field"><label>Starts</label><input data-field="startTime" type="time" value="${escapeAttr(commitment.startTime || '08:45')}" /></div><div class="field"><label>Ends</label><input data-field="endTime" type="time" value="${escapeAttr(commitment.endTime || '15:00')}" /></div><button class="remove-row" type="button" aria-label="Remove commitment"><i data-lucide="x" aria-hidden="true"></i></button>`;
+  renderIcons(row);
   row.querySelector('[data-field="category"]').value = commitment.category || 'school';
   row.querySelector('[data-field="recurrence"]').value = commitment.recurrence || 'weekdays';
   row.querySelector('[data-field="weekday"]').value = String(commitment.weekday ?? 1);
@@ -472,13 +581,24 @@ function operationSummary(operation) { const verb = operation.action === 'create
 function categoryClass(event) { return ['school', 'study', 'sport', 'extracurricular', 'other'].includes(event.category) ? event.category : (event.kind === 'training' ? 'sport' : event.kind === 'study' ? 'study' : 'other'); }
 function firstName(value) { return String(value || '').split(/[\s@]/)[0] || 'You'; }
 function preferredTheme() { try { return localStorage.getItem('arcadia-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { return 'light'; } }
-function updateThemeToggle() { const dark = document.documentElement.dataset.theme === 'dark'; const button = document.querySelector('#theme-toggle'); document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#22242d' : '#f4f5f9'); button.textContent = dark ? '☼' : '◐'; button.setAttribute('aria-pressed', String(dark)); button.setAttribute('aria-label', dark ? 'Use light mode' : 'Use dark mode'); }
+function updateThemeToggle() { const dark = document.documentElement.dataset.theme === 'dark'; const button = document.querySelector('#theme-toggle'); document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#22242d' : '#f4f5f9'); setIcon(button, dark ? 'sun' : 'moon'); button.setAttribute('aria-pressed', String(dark)); button.setAttribute('aria-label', dark ? 'Use light mode' : 'Use dark mode'); }
+
+function toggleAccountMenu() { const open = elements.accountMenu.hidden; elements.accountMenu.hidden = !open; elements.avatar.setAttribute('aria-expanded', String(open)); if (open) document.querySelector('#account-settings-button').focus(); }
+function closeAccountMenu() { elements.accountMenu.hidden = true; elements.avatar.setAttribute('aria-expanded', 'false'); }
+
+function renderIcons(root = document) { createIcons({ icons: lucideIcons, root, attrs: { 'aria-hidden': 'true' } }); }
+function setIcon(element, name) { element.innerHTML = `<i data-lucide="${name}" aria-hidden="true"></i>`; renderIcons(element); }
 function formatDuration(minutes) { const safe = Math.max(0, Math.round(Number(minutes) || 0)); const hours = Math.floor(safe / 60); const rest = safe % 60; return hours ? `${hours}h${rest ? ` ${rest}m` : ''}` : `${rest}m`; }
 function minutesBetween(start, end) { return Math.max(0, Math.round((Date.parse(end) - Date.parse(start)) / 60000)); }
 function formatTime(value, timezone) { return new Intl.DateTimeFormat(undefined, { timeZone: timezone, hour: 'numeric', minute: '2-digit' }).format(new Date(value)); }
 function formatDateTime(value, timezone) { return zonedDate(value, timezone, { weekday: 'short', hour: 'numeric', minute: '2-digit' }); }
 function formatDue(value, timezone) { return zonedDate(value, timezone, { weekday: 'short', day: 'numeric', month: 'short' }); }
 function formatRange(range, timezone) { const end = new Date(Date.parse(range.end) - 1); return `${zonedDate(range.start, timezone, { day: 'numeric', month: 'short' })}–${zonedDate(end, timezone, { day: 'numeric', month: 'short', year: 'numeric' })}`; }
+function analyticsRangeText(period, range, timezone) {
+  if (period === 'day') return zonedDate(range.start, timezone, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  if (period === 'month') return zonedDate(range.start, timezone, { month: 'long', year: 'numeric' });
+  return formatRange(range, timezone);
+}
 function zonedDate(value, timezone, options) { return new Intl.DateTimeFormat(undefined, { timeZone: timezone, ...options }).format(new Date(value)); }
 function dateKeyInZone(value, timezone) { const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(value)).map((part) => [part.type, part.value])); return `${parts.year}-${parts.month}-${parts.day}`; }
 function zonedTime(value, timezone) { const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(value)).map((part) => [part.type, part.value])); return `${parts.hour}:${parts.minute}`; }
@@ -496,7 +616,7 @@ function zonedLocalToIso(date, time, timezone) {
 }
 function localDateTimeValue(date) { const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return shifted.toISOString().slice(0, 16); }
 function emptyState(title, text) { return `<div class="empty-state"><strong>${escapeHtml(title)}</strong>${escapeHtml(text)}</div>`; }
-function escapeHtml(value) { return String(value || '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]); }
+function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]); }
 function escapeAttr(value) { return escapeHtml(value); }
 function toast(message) { elements.toast.textContent = message; elements.toast.classList.add('visible'); clearTimeout(toast.timer); toast.timer = setTimeout(() => elements.toast.classList.remove('visible'), 4200); }
 
