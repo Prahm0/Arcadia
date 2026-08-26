@@ -45,7 +45,9 @@ loadDashboard();
 function bindControls() {
   updateThemeToggle();
   document.querySelector('#theme-toggle').addEventListener('click', () => {
-    const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    const themes = ['light', 'dark', 'midnight'];
+    const current = themes.indexOf(document.documentElement.dataset.theme);
+    const theme = themes[(current + 1) % themes.length];
     document.documentElement.dataset.theme = theme;
     try { localStorage.setItem('arcadia-theme', theme); } catch {}
     updateThemeToggle();
@@ -580,8 +582,17 @@ function appendMessage(role, content) { const node = document.createElement('div
 function operationSummary(operation) { const verb = operation.action === 'create' ? 'Add' : 'Move'; return `${verb} ${escapeHtml(operation.title || 'plan item')} · ${escapeHtml(formatDateTime(operation.startAt, state.data.user.timezone))}`; }
 function categoryClass(event) { return ['school', 'study', 'sport', 'extracurricular', 'other'].includes(event.category) ? event.category : (event.kind === 'training' ? 'sport' : event.kind === 'study' ? 'study' : 'other'); }
 function firstName(value) { return String(value || '').split(/[\s@]/)[0] || 'You'; }
-function preferredTheme() { try { return localStorage.getItem('arcadia-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { return 'light'; } }
-function updateThemeToggle() { const dark = document.documentElement.dataset.theme === 'dark'; const button = document.querySelector('#theme-toggle'); document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#22242d' : '#f4f5f9'); setIcon(button, dark ? 'sun' : 'moon'); button.setAttribute('aria-pressed', String(dark)); button.setAttribute('aria-label', dark ? 'Use light mode' : 'Use dark mode'); }
+function preferredTheme() { try { const saved = localStorage.getItem('arcadia-theme'); return ['light', 'dark', 'midnight'].includes(saved) ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { return 'light'; } }
+function updateThemeToggle() {
+  const theme = document.documentElement.dataset.theme;
+  const next = theme === 'light' ? { name: 'dark', icon: 'moon' } : theme === 'dark' ? { name: 'midnight', icon: 'sparkles' } : { name: 'light', icon: 'sun' };
+  const themeColours = { light: '#f4f5f9', dark: '#22242d', midnight: '#020309' };
+  const button = document.querySelector('#theme-toggle');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColours[theme] || themeColours.light);
+  setIcon(button, next.icon);
+  button.setAttribute('aria-label', `Use ${next.name} mode`);
+  button.setAttribute('title', `Use ${next.name} mode`);
+}
 
 function toggleAccountMenu() { const open = elements.accountMenu.hidden; elements.accountMenu.hidden = !open; elements.avatar.setAttribute('aria-expanded', String(open)); if (open) document.querySelector('#account-settings-button').focus(); }
 function closeAccountMenu() { elements.accountMenu.hidden = true; elements.avatar.setAttribute('aria-expanded', 'false'); }

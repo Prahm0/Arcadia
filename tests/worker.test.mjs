@@ -47,10 +47,10 @@ test("uses all five Arcadia destinations in the intended navigation order", asyn
   const response = await worker.fetch(new Request("https://arcadia.test/", { headers: authHeaders() }), {}, {});
   const html = await response.text();
   const navigation = html.slice(html.indexOf('<nav class="rail-nav"'), html.indexOf('</nav>'));
+  assert.ok(navigation.indexOf('data-view="mentor"') < navigation.indexOf('data-view="today"'));
   assert.ok(navigation.indexOf('data-view="today"') < navigation.indexOf('data-view="schedule"'));
   assert.ok(navigation.indexOf('data-view="schedule"') < navigation.indexOf('data-view="analytics"'));
   assert.ok(navigation.indexOf('data-view="analytics"') < navigation.indexOf('data-view="study-group"'));
-  assert.ok(navigation.indexOf('data-view="study-group"') < navigation.indexOf('data-view="mentor"'));
   assert.doesNotMatch(navigation, /settings-button/);
   assert.match(html, /id="account-menu"[^>]*role="menu"[^>]*hidden/);
   assert.match(html, /id="account-settings-button"/);
@@ -73,6 +73,16 @@ test("defaults client navigation to Today and uses persisted dashboard data", as
   assert.match(script, /\/api\/dashboard/);
   assert.match(script, /\/api\/analytics\?period=/);
   assert.doesNotMatch(script, /Economics lecture|Calculus problem set/);
+  assert.match(script, /\['light', 'dark', 'midnight'\]/);
+});
+
+test("offers a persisted Midnight theme with black, purple, and blue styling", async () => {
+  const page = await worker.fetch(new Request("https://arcadia.test/", { headers: authHeaders() }), {}, {});
+  const html = await page.text();
+  assert.match(html, /:root\[data-theme="midnight"\]/);
+  assert.match(html, /--canvas:\s*#020309/);
+  assert.match(html, /--line:\s*#452a7d/);
+  assert.match(html, /--accent:\s*#358cff/);
 });
 
 test("loads the focused Lucide subset without module-only browser imports", async () => {

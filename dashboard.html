@@ -18,7 +18,7 @@
     <script>
       try {
         const saved = localStorage.getItem('arcadia-theme');
-        document.documentElement.dataset.theme = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.dataset.theme = ['light', 'dark', 'midnight'].includes(saved) ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
       } catch {}
     </script>
     <style>
@@ -44,6 +44,18 @@
         --sport: #8dbba7; --school: #9fc7e7; --extra: #c7a7cb; --other: #b2b5c4;
         --shadow-low: 0 4px 12px rgba(7, 8, 12, .22); --shadow: 0 16px 38px rgba(7, 8, 12, .32);
         --shadow-high: 0 28px 68px rgba(3, 4, 7, .48);
+      }
+      :root[data-theme="midnight"] {
+        color-scheme: dark; --ink: #f1f5ff; --muted: #8d99b3; --line: #452a7d;
+        --canvas: #020309; --panel: #080b14; --panel-soft: #0c1020; --control: #0b1020;
+        --hover: #111831; --rail: #050711; --divider: #241747; --accent: #358cff;
+        --accent-dark: #72b5ff; --accent-soft: #0c2449; --on-accent: #fff;
+        --blue: #36a5ff; --blue-soft: #0a213d; --green: #59d0a0; --green-soft: #0b2a24;
+        --amber: #f0b86a; --amber-soft: #30200d; --danger: #ff7790; --danger-soft: #32101b;
+        --sport: #56c99a; --school: #4fa5ff; --extra: #bd7aff; --other: #77839e;
+        --shadow-low: 0 4px 14px rgba(0, 60, 160, .16), 0 0 0 1px rgba(104, 60, 190, .04);
+        --shadow: 0 18px 44px rgba(0, 38, 110, .24), 0 0 24px rgba(80, 40, 160, .08);
+        --shadow-high: 0 30px 72px rgba(0, 0, 0, .72), 0 0 32px rgba(53, 140, 255, .12);
       }
       * { box-sizing: border-box; }
       html { color-scheme: light; }
@@ -340,11 +352,11 @@
           <button class="rail-toggle" id="rail-toggle" type="button" aria-label="Expand navigation" aria-expanded="false"><i data-lucide="panel-left-open" aria-hidden="true"></i></button>
         </div>
         <nav class="rail-nav" aria-label="Primary">
+          <button class="rail-button" type="button" data-view="mentor" aria-label="AI Mentor"><span class="rail-icon"><i data-lucide="sparkles" aria-hidden="true"></i></span><span class="rail-label">AI Mentor</span></button>
           <button class="rail-button active" type="button" data-view="today" aria-label="Today" aria-current="page"><span class="rail-icon"><i data-lucide="house" aria-hidden="true"></i></span><span class="rail-label">Today</span></button>
           <button class="rail-button" type="button" data-view="schedule" aria-label="Schedule"><span class="rail-icon"><i data-lucide="calendar-days" aria-hidden="true"></i></span><span class="rail-label">Schedule</span></button>
           <button class="rail-button" type="button" data-view="analytics" aria-label="Analytics"><span class="rail-icon"><i data-lucide="chart-no-axes-column-increasing" aria-hidden="true"></i></span><span class="rail-label">Analytics</span></button>
           <button class="rail-button" type="button" data-view="study-group" aria-label="Study Group"><span class="rail-icon"><i data-lucide="users" aria-hidden="true"></i></span><span class="rail-label">Study Group</span></button>
-          <button class="rail-button" type="button" data-view="mentor" aria-label="AI Mentor"><span class="rail-icon"><i data-lucide="sparkles" aria-hidden="true"></i></span><span class="rail-label">AI Mentor</span></button>
         </nav>
         <div class="rail-spacer"></div>
         <div class="avatar-wrap">
@@ -366,7 +378,7 @@
             <div><p class="eyebrow" id="page-eyebrow">Loading your plan…</p><h1 id="page-title">Today</h1></div>
           </div>
           <div class="top-actions">
-            <button class="icon-button" id="theme-toggle" type="button" aria-label="Use dark mode" aria-pressed="false"><i data-lucide="moon" aria-hidden="true"></i></button>
+            <button class="icon-button" id="theme-toggle" type="button" aria-label="Use dark mode" title="Use dark mode"><i data-lucide="moon" aria-hidden="true"></i></button>
             <button class="button" id="life-setup-button" type="button">Life setup</button>
             <button class="button primary" id="add-task-button" type="button">Add task</button>
           </div>
