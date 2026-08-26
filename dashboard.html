@@ -378,7 +378,6 @@
             <div><p class="eyebrow" id="page-eyebrow">Loading your plan…</p><h1 id="page-title">Today</h1></div>
           </div>
           <div class="top-actions">
-            <button class="icon-button" id="theme-toggle" type="button" aria-label="Use dark mode" title="Use dark mode"><i data-lucide="moon" aria-hidden="true"></i></button>
             <button class="button" id="life-setup-button" type="button">Life setup</button>
             <button class="button primary" id="add-task-button" type="button">Add task</button>
           </div>
@@ -512,7 +511,7 @@
 
     <dialog id="settings-dialog" aria-labelledby="settings-title">
       <div class="modal-head"><h2 id="settings-title">Settings</h2><button class="close-button" type="button" data-close="settings-dialog" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button></div>
-      <div class="modal-body"><div class="connection-card"><strong>Your life setup</strong><p>Update subjects, deadlines, commitments, sleep, and study capacity. Arcadia will rebuild future flexible blocks from the new information.</p><button class="button" id="edit-life-button" type="button">Edit life setup</button></div><div class="connection-card"><strong>Google Calendar</strong><p id="google-detail">Connect Google Calendar so imported events become fixed commitments. Arcadia only writes study blocks to its own calendar.</p><div class="button-row"><button class="button primary" id="google-connect" type="button">Connect Google</button><button class="button danger" id="google-disconnect" type="button" hidden>Disconnect</button></div></div><div class="connection-card"><strong id="account-name">Arcadia account</strong><p id="account-email">Signed in</p><button class="button danger" id="sign-out-button" type="button">Sign out</button></div></div>
+      <div class="modal-body"><div class="connection-card"><strong>Appearance</strong><p>Choose the colour style Arcadia uses on this device.</p><div class="field"><label for="theme-select">Style</label><select id="theme-select"><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option></select></div></div><div class="connection-card"><strong>Your life setup</strong><p>Update subjects, deadlines, commitments, sleep, and study capacity. Arcadia will rebuild future flexible blocks from the new information.</p><button class="button" id="edit-life-button" type="button">Edit life setup</button></div><div class="connection-card"><strong>Google Calendar</strong><p id="google-detail">Connect Google Calendar so imported events become fixed commitments. Arcadia only writes study blocks to its own calendar.</p><div class="button-row"><button class="button primary" id="google-connect" type="button">Connect Google</button><button class="button danger" id="google-disconnect" type="button" hidden>Disconnect</button></div></div><div class="connection-card"><strong id="account-name">Arcadia account</strong><p id="account-email">Signed in</p><button class="button danger" id="sign-out-button" type="button">Sign out</button></div></div>
     </dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script defer src="./lucide-icons.js"></script>

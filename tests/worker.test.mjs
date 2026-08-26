@@ -83,6 +83,8 @@ test("offers a persisted Midnight theme with black, purple, and blue styling", a
   assert.match(html, /--canvas:\s*#020309/);
   assert.match(html, /--line:\s*#452a7d/);
   assert.match(html, /--accent:\s*#358cff/);
+  assert.doesNotMatch(html, /id="theme-toggle"/);
+  assert.match(html, /<select id="theme-select">[\s\S]*value="light"[\s\S]*value="dark"[\s\S]*value="midnight"/);
 });
 
 test("loads the focused Lucide subset without module-only browser imports", async () => {

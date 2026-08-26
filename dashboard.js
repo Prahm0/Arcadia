@@ -31,7 +31,7 @@ const elements = {
   subjectRows: document.querySelector('#subject-rows'), taskRows: document.querySelector('#task-rows'),
   commitmentRows: document.querySelector('#commitment-rows'), taskDialog: document.querySelector('#task-dialog'),
   taskForm: document.querySelector('#task-form'), taskError: document.querySelector('#task-error'),
-  settingsDialog: document.querySelector('#settings-dialog'), googleDetail: document.querySelector('#google-detail'),
+  settingsDialog: document.querySelector('#settings-dialog'), themeSelect: document.querySelector('#theme-select'), googleDetail: document.querySelector('#google-detail'),
   googleConnect: document.querySelector('#google-connect'), googleDisconnect: document.querySelector('#google-disconnect'),
   toast: document.querySelector('#toast')
 };
@@ -43,15 +43,8 @@ activateView(viewFromHash());
 loadDashboard();
 
 function bindControls() {
-  updateThemeToggle();
-  document.querySelector('#theme-toggle').addEventListener('click', () => {
-    const themes = ['light', 'dark', 'midnight'];
-    const current = themes.indexOf(document.documentElement.dataset.theme);
-    const theme = themes[(current + 1) % themes.length];
-    document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem('arcadia-theme', theme); } catch {}
-    updateThemeToggle();
-  });
+  updateThemeControls();
+  elements.themeSelect.addEventListener('change', () => applyTheme(elements.themeSelect.value));
   document.querySelector('#rail-toggle').addEventListener('click', () => {
     const open = elements.shell.classList.toggle('rail-open');
     const button = document.querySelector('#rail-toggle');
@@ -583,15 +576,17 @@ function operationSummary(operation) { const verb = operation.action === 'create
 function categoryClass(event) { return ['school', 'study', 'sport', 'extracurricular', 'other'].includes(event.category) ? event.category : (event.kind === 'training' ? 'sport' : event.kind === 'study' ? 'study' : 'other'); }
 function firstName(value) { return String(value || '').split(/[\s@]/)[0] || 'You'; }
 function preferredTheme() { try { const saved = localStorage.getItem('arcadia-theme'); return ['light', 'dark', 'midnight'].includes(saved) ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { return 'light'; } }
-function updateThemeToggle() {
-  const theme = document.documentElement.dataset.theme;
-  const next = theme === 'light' ? { name: 'dark', icon: 'moon' } : theme === 'dark' ? { name: 'midnight', icon: 'sparkles' } : { name: 'light', icon: 'sun' };
+function applyTheme(theme) {
+  const safeTheme = ['light', 'dark', 'midnight'].includes(theme) ? theme : 'light';
+  document.documentElement.dataset.theme = safeTheme;
+  try { localStorage.setItem('arcadia-theme', safeTheme); } catch {}
+  updateThemeControls();
+}
+function updateThemeControls() {
+  const theme = document.documentElement.dataset.theme || 'light';
   const themeColours = { light: '#f4f5f9', dark: '#22242d', midnight: '#020309' };
-  const button = document.querySelector('#theme-toggle');
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColours[theme] || themeColours.light);
-  setIcon(button, next.icon);
-  button.setAttribute('aria-label', `Use ${next.name} mode`);
-  button.setAttribute('title', `Use ${next.name} mode`);
+  if (elements.themeSelect) elements.themeSelect.value = theme;
 }
 
 function toggleAccountMenu() { const open = elements.accountMenu.hidden; elements.accountMenu.hidden = !open; elements.avatar.setAttribute('aria-expanded', String(open)); if (open) document.querySelector('#account-settings-button').focus(); }
