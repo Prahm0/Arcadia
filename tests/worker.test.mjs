@@ -43,19 +43,21 @@ test("serves Today as the private Arcadia home without hardcoded demo work", asy
   assert.doesNotMatch(html, /Economics lecture|Calculus problem set|Easy run/);
 });
 
-test("uses all five Arcadia destinations in the intended navigation order", async () => {
+test("uses all six Arcadia destinations in the intended navigation order", async () => {
   const response = await worker.fetch(new Request("https://arcadia.test/", { headers: authHeaders() }), {}, {});
   const html = await response.text();
   const navigation = html.slice(html.indexOf('<nav class="rail-nav"'), html.indexOf('</nav>'));
   assert.ok(navigation.indexOf('data-view="mentor"') < navigation.indexOf('data-view="today"'));
   assert.ok(navigation.indexOf('data-view="today"') < navigation.indexOf('data-view="schedule"'));
-  assert.ok(navigation.indexOf('data-view="schedule"') < navigation.indexOf('data-view="analytics"'));
+  assert.ok(navigation.indexOf('data-view="schedule"') < navigation.indexOf('data-view="study-tracker"'));
+  assert.ok(navigation.indexOf('data-view="study-tracker"') < navigation.indexOf('data-view="analytics"'));
   assert.ok(navigation.indexOf('data-view="analytics"') < navigation.indexOf('data-view="study-group"'));
   assert.doesNotMatch(navigation, /settings-button/);
   assert.match(html, /id="account-menu"[^>]*role="menu"[^>]*hidden/);
   assert.match(html, /id="account-settings-button"/);
   assert.match(html, /data-view-panel="today"/);
   assert.match(html, /data-view-panel="schedule"[^>]*hidden/);
+  assert.match(html, /data-view-panel="study-tracker"[^>]*hidden/);
   assert.match(html, /data-view-panel="analytics"[^>]*hidden/);
   assert.match(html, /data-view-panel="study-group"[^>]*hidden/);
   assert.match(html, /data-view-panel="mentor"[^>]*hidden/);
@@ -68,12 +70,28 @@ test("defaults client navigation to Today and uses persisted dashboard data", as
   const response = await worker.fetch(new Request("https://arcadia.test/dashboard.js"), {}, {});
   assert.equal(response.status, 200);
   const script = await response.text();
-  assert.match(script, /\['today', 'schedule', 'analytics', 'study-group', 'mentor'\]/);
+  assert.match(script, /\['today', 'schedule', 'study-tracker', 'analytics', 'study-group', 'mentor'\]/);
   assert.match(script, /#today/);
   assert.match(script, /\/api\/dashboard/);
   assert.match(script, /\/api\/analytics\?period=/);
   assert.doesNotMatch(script, /Economics lecture|Calculus problem set/);
   assert.match(script, /\['light', 'dark', 'midnight'\]/);
+});
+
+test("includes subject-aware focus, stopwatch, rest, and custom tracker tools", async () => {
+  const page = await worker.fetch(new Request("https://arcadia.test/", { headers: authHeaders() }), {}, {});
+  const html = await page.text();
+  for (const id of ["tracker-subject", "tracker-goal", "tracker-clock", "tracker-start", "tracker-preset", "tracker-focus-minutes", "tracker-rest-minutes", "tracker-cycles", "tracker-auto-rest", "tracker-distraction", "tracker-history"]) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(html, /Pomodoro · 25 \/ 5 × 4/);
+  assert.match(html, /Deep work · 50 \/ 10 × 3/);
+  assert.match(html, /Long focus · 90 \/ 20 × 2/);
+  assert.match(html, /data-tracker-mode="stopwatch"/);
+  assert.match(html, /data-tracker-mode="rest"/);
+
+  const response = await worker.fetch(new Request("https://arcadia.test/dashboard.js"), {}, {});
+  const script = await response.text();
+  assert.match(script, /arcadia-study-tracker:/);
+  assert.match(script, /setInterval\(tickTracker, 250\)/);
 });
 
 test("offers a persisted Midnight theme with black, purple, and blue styling", async () => {

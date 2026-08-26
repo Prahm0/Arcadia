@@ -1,11 +1,18 @@
 const { createIcons, icons: lucideIcons } = window.ArcadiaLucide;
 
+const trackerPresets = {
+  pomodoro: { focus: 25, rest: 5, cycles: 4 }, deep: { focus: 50, rest: 10, cycles: 3 },
+  long: { focus: 90, rest: 20, cycles: 2 }, sprint: { focus: 15, rest: 3, cycles: 4 },
+  exam: { focus: 45, rest: 15, cycles: 2 }
+};
+
 const state = {
   data: null,
   anchorDate: new Date(),
   analyticsDate: new Date(),
   analyticsPeriod: 'day',
   analyticsRequest: 0,
+  tracker: { initialized: false, userId: null, mode: 'focus', phase: 'focus', running: false, remaining: 1500, total: 1500, elapsed: 0, baseValue: 0, startedAt: 0, cycle: 1, distractions: 0, history: [], interval: null, storageKey: null },
   activeView: 'today',
   loading: false,
   saving: false
@@ -23,6 +30,13 @@ const elements = {
   analyticsContent: document.querySelector('#analytics-content'), analyticsMetrics: document.querySelector('#analytics-metrics'),
   analyticsRangeLabel: document.querySelector('#analytics-range-label'), subjectDistribution: document.querySelector('#subject-distribution'),
   analyticsNote: document.querySelector('#analytics-note'), analyticsPeriodButtons: [...document.querySelectorAll('[data-analytics-period]')],
+  trackerModeButtons: [...document.querySelectorAll('[data-tracker-mode]')], trackerSubject: document.querySelector('#tracker-subject'),
+  trackerGoal: document.querySelector('#tracker-goal'), trackerFace: document.querySelector('#tracker-face'), trackerPhase: document.querySelector('#tracker-phase'),
+  trackerClock: document.querySelector('#tracker-clock'), trackerCycle: document.querySelector('#tracker-cycle'), trackerLiveStatus: document.querySelector('#tracker-live-status'),
+  trackerStart: document.querySelector('#tracker-start'), trackerSkip: document.querySelector('#tracker-skip'), trackerFinish: document.querySelector('#tracker-finish'),
+  trackerPreset: document.querySelector('#tracker-preset'), trackerFocusMinutes: document.querySelector('#tracker-focus-minutes'), trackerRestMinutes: document.querySelector('#tracker-rest-minutes'),
+  trackerCycles: document.querySelector('#tracker-cycles'), trackerAutoRest: document.querySelector('#tracker-auto-rest'), trackerStats: document.querySelector('#tracker-stats'),
+  trackerHistory: document.querySelector('#tracker-history'), trackerDistractionCount: document.querySelector('#tracker-distraction-count'),
   messages: document.querySelector('#messages'), proposals: document.querySelector('#proposals'),
   mentorStatus: document.querySelector('#mentor-status'), mentorContext: document.querySelector('#mentor-context'),
   composer: document.querySelector('#composer'), chatInput: document.querySelector('#chat-input'), send: document.querySelector('#send-button'),
@@ -74,6 +88,16 @@ function bindControls() {
   document.querySelector('#previous-analytics').addEventListener('click', () => moveAnalytics(-1));
   document.querySelector('#next-analytics').addEventListener('click', () => moveAnalytics(1));
   document.querySelector('#current-analytics').addEventListener('click', () => { state.analyticsDate = new Date(); loadAnalytics(); });
+  elements.trackerModeButtons.forEach((button) => button.addEventListener('click', () => selectTrackerMode(button.dataset.trackerMode)));
+  elements.trackerStart.addEventListener('click', toggleTracker);
+  document.querySelector('#tracker-reset').addEventListener('click', resetTracker);
+  elements.trackerSkip.addEventListener('click', skipTrackerPhase);
+  elements.trackerFinish.addEventListener('click', finishTrackerSession);
+  elements.trackerPreset.addEventListener('change', () => applyTrackerPreset(elements.trackerPreset.value));
+  [elements.trackerFocusMinutes, elements.trackerRestMinutes, elements.trackerCycles].forEach((input) => input.addEventListener('change', () => { elements.trackerPreset.value = 'custom'; resetTracker(); }));
+  document.querySelector('#tracker-distraction').addEventListener('click', () => { state.tracker.distractions += 1; renderTracker(); });
+  document.querySelector('#tracker-clear-distractions').addEventListener('click', () => { state.tracker.distractions = 0; renderTracker(); });
+  document.querySelector('#tracker-clear-history').addEventListener('click', clearTrackerHistory);
   document.querySelector('#add-subject-row').addEventListener('click', () => addSubjectRow());
   document.querySelector('#add-task-row').addEventListener('click', () => addTaskRow());
   document.querySelector('#add-commitment-row').addEventListener('click', () => addCommitmentRow());
@@ -93,20 +117,20 @@ function bindControls() {
 
 function viewFromHash() {
   const requested = location.hash.slice(1);
-  if (['today', 'schedule', 'analytics', 'study-group', 'mentor'].includes(requested)) return requested;
+  if (['today', 'schedule', 'study-tracker', 'analytics', 'study-group', 'mentor'].includes(requested)) return requested;
   history.replaceState({}, '', `${location.pathname}${location.search}#today`);
   return 'today';
 }
 
 function activateView(view) {
-  state.activeView = ['today', 'schedule', 'analytics', 'study-group', 'mentor'].includes(view) ? view : 'today';
+  state.activeView = ['today', 'schedule', 'study-tracker', 'analytics', 'study-group', 'mentor'].includes(view) ? view : 'today';
   elements.views.forEach((panel) => { panel.hidden = panel.dataset.viewPanel !== state.activeView; });
   elements.viewButtons.forEach((button) => {
     const active = button.dataset.view === state.activeView;
     button.classList.toggle('active', active);
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
-  const titles = { today: 'Today', schedule: 'Schedule', analytics: 'Analytics', 'study-group': 'Study Group', mentor: 'AI Mentor' };
+  const titles = { today: 'Today', schedule: 'Schedule', 'study-tracker': 'Study Tracker', analytics: 'Analytics', 'study-group': 'Study Group', mentor: 'AI Mentor' };
   elements.pageTitle.textContent = titles[state.activeView];
   document.title = `${titles[state.activeView]} · Arcadia`;
   updateHeader();
@@ -141,6 +165,7 @@ function renderAll() {
   updateHeader();
   renderToday();
   renderSchedule();
+  initializeTracker();
   renderMentor();
   renderGoogle();
 }
@@ -154,6 +179,9 @@ function updateHeader() {
   } else if (state.activeView === 'schedule') {
     elements.pageEyebrow.textContent = range ? `Week of ${zonedDate(range.start, user.timezone, { day: 'numeric', month: 'long' })}` : 'Weekly plan';
     elements.pageTitle.textContent = 'Schedule';
+  } else if (state.activeView === 'study-tracker') {
+    elements.pageEyebrow.textContent = 'Focus, rest, repeat';
+    elements.pageTitle.textContent = 'Study Tracker';
   } else if (state.activeView === 'analytics') {
     elements.pageEyebrow.textContent = 'Your study patterns';
     elements.pageTitle.textContent = 'Analytics';
@@ -164,6 +192,201 @@ function updateHeader() {
     elements.pageEyebrow.textContent = 'Plan, recover, adapt';
     elements.pageTitle.textContent = 'AI Mentor';
   }
+}
+
+function initializeTracker() {
+  const userId = state.data.user.id;
+  const previousSubject = elements.trackerSubject.value;
+  elements.trackerSubject.innerHTML = '';
+  const subjectNames = ['General', ...state.data.subjects.map((subject) => subject.name)].filter((name, index, list) => name && list.indexOf(name) === index);
+  subjectNames.forEach((name) => elements.trackerSubject.add(new Option(name, name)));
+  elements.trackerSubject.value = subjectNames.includes(previousSubject) ? previousSubject : subjectNames[0];
+  if (state.tracker.initialized && state.tracker.userId === userId) { renderTracker(); return; }
+  stopTrackerClock();
+  state.tracker.userId = userId;
+  state.tracker.storageKey = `arcadia-study-tracker:${userId}`;
+  state.tracker.history = [];
+  try {
+    const saved = JSON.parse(localStorage.getItem(state.tracker.storageKey) || '[]');
+    if (Array.isArray(saved)) state.tracker.history = saved.filter((item) => item && Number(item.seconds) > 0 && item.endedAt).slice(0, 50);
+  } catch {}
+  state.tracker.initialized = true;
+  state.tracker.distractions = 0;
+  selectTrackerMode('focus');
+}
+
+function trackerConfig() {
+  const focus = clampTrackerInput(elements.trackerFocusMinutes, 1, 240, 25);
+  const rest = clampTrackerInput(elements.trackerRestMinutes, 1, 60, 5);
+  const cycles = clampTrackerInput(elements.trackerCycles, 1, 12, 4);
+  return { focus, rest, cycles };
+}
+
+function clampTrackerInput(input, min, max, fallback) {
+  const value = Math.min(max, Math.max(min, Math.round(Number(input.value) || fallback)));
+  input.value = String(value);
+  return value;
+}
+
+function applyTrackerPreset(name) {
+  const preset = trackerPresets[name];
+  if (preset) {
+    elements.trackerFocusMinutes.value = String(preset.focus);
+    elements.trackerRestMinutes.value = String(preset.rest);
+    elements.trackerCycles.value = String(preset.cycles);
+  }
+  resetTracker();
+}
+
+function selectTrackerMode(mode) {
+  if (!['focus', 'stopwatch', 'rest'].includes(mode)) return;
+  stopTrackerClock();
+  state.tracker.mode = mode;
+  state.tracker.phase = mode === 'rest' ? 'rest' : 'focus';
+  state.tracker.cycle = 1;
+  state.tracker.elapsed = 0;
+  const config = trackerConfig();
+  state.tracker.total = (mode === 'rest' ? config.rest : config.focus) * 60;
+  state.tracker.remaining = state.tracker.total;
+  elements.trackerModeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.trackerMode === mode)));
+  renderTracker();
+}
+
+function toggleTracker() {
+  if (state.tracker.running) { pauseTracker(); return; }
+  state.tracker.running = true;
+  state.tracker.startedAt = Date.now();
+  state.tracker.baseValue = state.tracker.mode === 'stopwatch' ? state.tracker.elapsed : state.tracker.remaining;
+  state.tracker.interval = setInterval(tickTracker, 250);
+  renderTracker();
+}
+
+function tickTracker() {
+  if (!state.tracker.running) return;
+  const delta = Math.floor((Date.now() - state.tracker.startedAt) / 1000);
+  if (state.tracker.mode === 'stopwatch') state.tracker.elapsed = state.tracker.baseValue + delta;
+  else state.tracker.remaining = Math.max(0, state.tracker.baseValue - delta);
+  if (state.tracker.mode !== 'stopwatch' && state.tracker.remaining === 0) completeTrackerPhase();
+  renderTracker();
+}
+
+function pauseTracker() {
+  tickTracker();
+  stopTrackerClock();
+  renderTracker();
+}
+
+function stopTrackerClock() {
+  state.tracker.running = false;
+  if (state.tracker.interval) clearInterval(state.tracker.interval);
+  state.tracker.interval = null;
+}
+
+function resetTracker() {
+  stopTrackerClock();
+  const config = trackerConfig();
+  state.tracker.elapsed = 0;
+  state.tracker.cycle = 1;
+  state.tracker.phase = state.tracker.mode === 'rest' ? 'rest' : 'focus';
+  state.tracker.total = (state.tracker.mode === 'rest' ? config.rest : config.focus) * 60;
+  state.tracker.remaining = state.tracker.total;
+  renderTracker();
+}
+
+function skipTrackerPhase() {
+  if (state.tracker.mode === 'stopwatch') return;
+  stopTrackerClock();
+  if (state.tracker.mode === 'rest') { resetTracker(); return; }
+  moveToNextTrackerPhase(false);
+}
+
+function completeTrackerPhase() {
+  stopTrackerClock();
+  logTrackerSession(state.tracker.phase, state.tracker.total);
+  if (state.tracker.mode === 'rest') { toast('Rest complete. You’re ready for the next block.'); resetTracker(); return; }
+  moveToNextTrackerPhase(true);
+}
+
+function moveToNextTrackerPhase(completed) {
+  const config = trackerConfig();
+  if (state.tracker.phase === 'focus') {
+    if (state.tracker.cycle >= config.cycles) {
+      state.tracker.cycle = 1; state.tracker.phase = 'focus'; state.tracker.total = config.focus * 60; state.tracker.remaining = state.tracker.total;
+      toast(completed ? 'Study plan complete. Great work.' : 'Study plan reset.'); renderTracker(); return;
+    }
+    state.tracker.phase = 'rest'; state.tracker.total = config.rest * 60; state.tracker.remaining = state.tracker.total;
+  } else {
+    state.tracker.cycle += 1; state.tracker.phase = 'focus'; state.tracker.total = config.focus * 60; state.tracker.remaining = state.tracker.total;
+  }
+  state.tracker.elapsed = 0;
+  if (elements.trackerAutoRest.checked) toggleTracker(); else renderTracker();
+}
+
+function finishTrackerSession() {
+  if (state.tracker.running) tickTracker();
+  stopTrackerClock();
+  const seconds = state.tracker.mode === 'stopwatch' ? state.tracker.elapsed : Math.max(0, state.tracker.total - state.tracker.remaining);
+  if (seconds < 1) { toast('Start the tracker before logging a session.'); renderTracker(); return; }
+  logTrackerSession(state.tracker.mode === 'stopwatch' ? 'stopwatch' : state.tracker.phase, seconds);
+  toast('Session saved to this device.');
+  resetTracker();
+}
+
+function logTrackerSession(type, seconds) {
+  const entry = { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, type, seconds: Math.max(1, Math.round(seconds)), subject: elements.trackerSubject.value || 'General', goal: elements.trackerGoal.value.trim(), endedAt: new Date().toISOString() };
+  state.tracker.history.unshift(entry);
+  state.tracker.history = state.tracker.history.slice(0, 50);
+  saveTrackerHistory();
+  renderTrackerHistory();
+  renderTrackerStats();
+}
+
+function saveTrackerHistory() { try { localStorage.setItem(state.tracker.storageKey, JSON.stringify(state.tracker.history)); } catch {} }
+function clearTrackerHistory() { state.tracker.history = []; saveTrackerHistory(); renderTrackerHistory(); renderTrackerStats(); toast('Study Tracker history cleared.'); }
+
+function renderTracker() {
+  const tracker = state.tracker;
+  const config = trackerConfig();
+  const seconds = tracker.mode === 'stopwatch' ? tracker.elapsed : tracker.remaining;
+  elements.trackerClock.textContent = formatTrackerClock(seconds);
+  elements.trackerPhase.textContent = tracker.mode === 'stopwatch' ? 'Stopwatch' : tracker.phase === 'rest' ? 'Rest' : 'Focus';
+  elements.trackerCycle.textContent = tracker.mode === 'focus' ? `Cycle ${tracker.cycle} of ${config.cycles}` : tracker.mode === 'rest' ? 'Standalone rest timer' : 'Count up freely';
+  const progress = tracker.mode === 'stopwatch' ? (tracker.elapsed % 3600) / 3600 : tracker.total ? (tracker.total - tracker.remaining) / tracker.total : 0;
+  elements.trackerFace.style.setProperty('--timer-progress', `${Math.max(0, Math.min(1, progress)) * 360}deg`);
+  elements.trackerStart.textContent = tracker.running ? 'Pause' : tracker.mode === 'stopwatch' && tracker.elapsed ? 'Resume' : 'Start';
+  elements.trackerSkip.hidden = tracker.mode === 'stopwatch';
+  elements.trackerLiveStatus.textContent = tracker.running ? `${elements.trackerPhase.textContent} in progress` : tracker.mode === 'stopwatch' && tracker.elapsed ? 'Stopwatch paused' : tracker.mode === 'rest' ? 'Ready to rest' : 'Ready to focus';
+  elements.trackerLiveStatus.classList.toggle('running', tracker.running);
+  [elements.trackerPreset, elements.trackerFocusMinutes, elements.trackerRestMinutes, elements.trackerCycles].forEach((control) => { control.disabled = tracker.running; });
+  elements.trackerDistractionCount.textContent = String(tracker.distractions);
+  renderTrackerStats();
+  renderTrackerHistory();
+}
+
+function renderTrackerStats() {
+  const timezone = state.data?.user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const today = dateKeyInZone(new Date(), timezone);
+  const sessions = state.tracker.history.filter((item) => dateKeyInZone(item.endedAt, timezone) === today && ['focus', 'stopwatch'].includes(item.type));
+  const focusedSeconds = sessions.reduce((sum, item) => sum + Number(item.seconds || 0), 0);
+  elements.trackerStats.innerHTML = `<div class="tracker-stat"><span>Focused today</span><strong>${formatDuration(Math.round(focusedSeconds / 60))}</strong></div><div class="tracker-stat"><span>Sessions</span><strong>${sessions.length}</strong></div><div class="tracker-stat"><span>Distractions</span><strong>${state.tracker.distractions}</strong></div>`;
+}
+
+function renderTrackerHistory() {
+  elements.trackerHistory.innerHTML = '';
+  if (!state.tracker.history.length) { elements.trackerHistory.innerHTML = emptyState('No sessions yet', 'Finish or complete a timer to start your record.'); return; }
+  const timezone = state.data?.user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  state.tracker.history.slice(0, 10).forEach((item) => {
+    const row = document.createElement('div'); row.className = 'tracker-history-row';
+    const detail = item.goal ? `${item.subject} · ${item.goal}` : item.subject;
+    row.innerHTML = `<div><strong>${escapeHtml(detail)}</strong><span>${escapeHtml(zonedDate(item.endedAt, timezone, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }))}</span></div><span class="tracker-history-type">${escapeHtml(item.type)}</span><span class="tracker-history-time">${formatTrackerClock(item.seconds)}</span>`;
+    elements.trackerHistory.append(row);
+  });
+}
+
+function formatTrackerClock(seconds) {
+  const safe = Math.max(0, Math.round(Number(seconds) || 0));
+  const hours = Math.floor(safe / 3600); const minutes = Math.floor((safe % 3600) / 60); const rest = safe % 60;
+  return hours ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}` : `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
 }
 
 async function loadAnalytics() {

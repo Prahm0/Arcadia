@@ -45,6 +45,11 @@ const Sun = [
   ['path', { d: 'M20 12h2' }], ['path', { d: 'm6.34 17.66-1.41 1.41' }],
   ['path', { d: 'm19.07 4.93-1.41 1.41' }]
 ];
+const Timer = [
+  ['line', { x1: '10', x2: '14', y1: '2', y2: '2' }],
+  ['line', { x1: '12', x2: '15', y1: '14', y2: '11' }],
+  ['circle', { cx: '12', cy: '14', r: '8' }]
+];
 const Users = [
   ['path', { d: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2' }],
   ['circle', { cx: '9', cy: '7', r: '4' }],
@@ -82,7 +87,7 @@ window.ArcadiaLucide = {
   createIcons,
   icons: {
     ArrowUp, CalendarDays, ChartNoAxesColumnIncreasing, Check, ChevronLeft, ChevronRight, House, Moon,
-    PanelLeftClose, PanelLeftOpen, Sparkles, Sun, Users, X
+    PanelLeftClose, PanelLeftOpen, Sparkles, Sun, Timer, Users, X
   }
 };
 })();
