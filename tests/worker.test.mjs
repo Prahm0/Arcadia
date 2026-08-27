@@ -95,6 +95,15 @@ test("defaults client navigation to Today and uses persisted dashboard data", as
   assert.match(script, /\['light', 'dawn', 'rose', 'ocean', 'sage', 'lavender', 'dusk', 'dark', 'midnight'\]/);
 });
 
+test("ships responsive day, week, and month calendar controls", async () => {
+  const env = testEnv(); const page = await worker.fetch(new Request("https://arcadia.test/", { headers: await authHeaders(env, "calendar-ui") }), env, {}); const html = await page.text();
+  for (const view of ["day", "week", "month"]) assert.match(html, new RegExp(`data-calendar-view="${view}"`));
+  for (const filter of ["school", "study", "sport", "extracurricular", "other", "assessment"]) assert.match(html, new RegExp(`data-filter="${filter}"`));
+  for (const id of ["calendar-add-event", "calendar-add-task", "event-dialog", "event-form", "assessment-dialog"]) assert.match(html, new RegExp(`id="${id}"`));
+  const response = await worker.fetch(new Request("https://arcadia.test/dashboard.js"), {}, {}); const script = await response.text();
+  assert.match(script, /\/api\/calendar\?start=/); assert.match(script, /beginEventDrag/); assert.match(script, /moveMonthEvent/); assert.match(script, /arcadia-calendar:/);
+});
+
 test("includes subject-aware focus, stopwatch, rest, and custom tracker tools", async () => {
   const env = testEnv(); const page = await worker.fetch(new Request("https://arcadia.test/", { headers: await authHeaders(env) }), env, {});
   const html = await page.text();
