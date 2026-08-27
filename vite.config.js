@@ -1,18 +1,23 @@
 import { sites } from "@openai/sites-vite-plugin";
 import { defineConfig } from "vite";
 import { DatabaseSync } from "node:sqlite";
+import { mkdirSync } from "node:fs";
+import { resolve } from "node:path";
 
 class DevD1Statement {
-  constructor(statement) { this.statement = statement; this.values = []; }
+  constructor(sqlite, sql) { this.sqlite = sqlite; this.sql = sql; this.values = []; }
   bind(...values) { this.values = values; return this; }
-  async run() { const result = this.statement.run(...this.values); return { success: true, meta: { changes: Number(result.changes) } }; }
-  async all() { return { results: this.statement.all(...this.values) }; }
-  async first() { return this.statement.get(...this.values) || null; }
+  async run() { const result = this.sqlite.prepare(this.sql).run(...this.values); return { success: true, meta: { changes: Number(result.changes) } }; }
+  async all() { return { results: this.sqlite.prepare(this.sql).all(...this.values) }; }
+  async first() { return this.sqlite.prepare(this.sql).get(...this.values) || null; }
 }
 
 class DevD1 {
-  constructor() { this.sqlite = new DatabaseSync(":memory:"); this.sqlite.exec("PRAGMA foreign_keys = ON"); }
-  prepare(sql) { return new DevD1Statement(this.sqlite.prepare(sql)); }
+  constructor() {
+    const directory = resolve(".local"); mkdirSync(directory, { recursive: true });
+    this.sqlite = new DatabaseSync(resolve(directory, "arcadia.sqlite")); this.sqlite.exec("PRAGMA foreign_keys = ON");
+  }
+  prepare(sql) { return new DevD1Statement(this.sqlite, sql); }
   async batch(statements) {
     this.sqlite.exec("BEGIN");
     try {
@@ -35,7 +40,7 @@ function arcadiaDevWorker() {
     configureServer(server) {
       server.middlewares.use(async (incoming, outgoing, next) => {
         const path = (incoming.url || "/").split("?")[0];
-        if (!(path === "/" || path === "/dashboard" || path === "/dashboard.js" || path === "/lucide-icons.js" || path.startsWith("/api/") || /\.(?:png)$/.test(path))) return next();
+        if (!(path === "/" || path === "/dashboard" || path === "/dashboard.js" || path === "/auth.js" || ["/login", "/register", "/forgot-password", "/reset-password", "/verify-email"].includes(path) || path === "/lucide-icons.js" || path.startsWith("/api/") || /\.(?:png)$/.test(path))) return next();
         try {
           const origin = `http://${incoming.headers.host || "127.0.0.1:5173"}`;
           const body = ["GET", "HEAD"].includes(incoming.method || "GET") ? undefined : Buffer.concat(await readBody(incoming));
@@ -52,6 +57,9 @@ function arcadiaDevWorker() {
             GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
             GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI,
             TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY
+            ,RESEND_API_KEY: process.env.RESEND_API_KEY
+            ,RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL
+            ,APP_ORIGIN: process.env.APP_ORIGIN
           }, { waitUntil(promise) { pending.push(Promise.resolve(promise)); } });
           outgoing.statusCode = response.status;
           for (const [name, value] of response.headers) outgoing.setHeader(name, value);

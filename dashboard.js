@@ -1,5 +1,11 @@
 const { createIcons, icons: lucideIcons } = window.ArcadiaLucide;
 
+const themes = ['light', 'dawn', 'rose', 'ocean', 'sage', 'lavender', 'dusk', 'dark', 'midnight'];
+const themeColours = {
+  light: '#f4f5f9', dawn: '#fbf5ef', rose: '#faf4f6', ocean: '#f2f7fa', sage: '#f4f7f1',
+  lavender: '#f7f5fa', dusk: '#282633', dark: '#22242d', midnight: '#020309'
+};
+
 const trackerPresets = {
   pomodoro: { focus: 25, rest: 5, cycles: 4 }, deep: { focus: 50, rest: 10, cycles: 3 },
   long: { focus: 90, rest: 20, cycles: 2 }, sprint: { focus: 15, rest: 3, cycles: 4 },
@@ -14,6 +20,11 @@ const state = {
   analyticsRequest: 0,
   tracker: { initialized: false, userId: null, mode: 'focus', phase: 'focus', running: false, remaining: 1500, total: 1500, elapsed: 0, baseValue: 0, startedAt: 0, cycle: 1, distractions: 0, history: [], interval: null, storageKey: null },
   activeView: 'today',
+  calendarView: matchMedia('(max-width: 720px)').matches ? 'day' : 'week',
+  calendarEvents: [], calendarRangeKey: '', calendarRequest: 0, calendarScrolled: false, calendarUserId: null,
+  calendarFilters: new Set(['school', 'study', 'sport', 'extracurricular', 'other', 'assessment']),
+  editingEvent: null, drag: null,
+  csrfToken: null,
   loading: false,
   saving: false
 };
@@ -27,6 +38,8 @@ const elements = {
   todayLoad: document.querySelector('#today-load'), focusList: document.querySelector('#focus-list'),
   progressMetrics: document.querySelector('#progress-metrics'), taskList: document.querySelector('#task-list'),
   weekLabel: document.querySelector('#week-label'), weekBoard: document.querySelector('#week-board'),
+  calendarViewButtons: [...document.querySelectorAll('[data-calendar-view]')], calendarFilterButtons: [...document.querySelectorAll('[data-filter]')],
+  calendarAddEvent: document.querySelector('#calendar-add-event'), calendarAddTask: document.querySelector('#calendar-add-task'),
   analyticsContent: document.querySelector('#analytics-content'), analyticsMetrics: document.querySelector('#analytics-metrics'),
   analyticsRangeLabel: document.querySelector('#analytics-range-label'), subjectDistribution: document.querySelector('#subject-distribution'),
   analyticsNote: document.querySelector('#analytics-note'), analyticsPeriodButtons: [...document.querySelectorAll('[data-analytics-period]')],
@@ -46,7 +59,10 @@ const elements = {
   commitmentRows: document.querySelector('#commitment-rows'), taskDialog: document.querySelector('#task-dialog'),
   taskForm: document.querySelector('#task-form'), taskError: document.querySelector('#task-error'),
   settingsDialog: document.querySelector('#settings-dialog'), themeSelect: document.querySelector('#theme-select'), googleDetail: document.querySelector('#google-detail'),
+  profileForm: document.querySelector('#profile-form'), emailForm: document.querySelector('#email-form'), passwordForm: document.querySelector('#password-form'), deleteAccountForm: document.querySelector('#delete-account-form'),
   googleConnect: document.querySelector('#google-connect'), googleDisconnect: document.querySelector('#google-disconnect'),
+  eventDialog: document.querySelector('#event-dialog'), eventForm: document.querySelector('#event-form'), eventError: document.querySelector('#event-error'),
+  assessmentDialog: document.querySelector('#assessment-dialog'), assessmentDetail: document.querySelector('#assessment-detail'),
   toast: document.querySelector('#toast')
 };
 
@@ -58,7 +74,7 @@ loadDashboard();
 
 function bindControls() {
   updateThemeControls();
-  elements.themeSelect.addEventListener('change', () => applyTheme(elements.themeSelect.value));
+  elements.themeSelect.addEventListener('change', () => saveTheme(elements.themeSelect.value));
   document.querySelector('#rail-toggle').addEventListener('click', () => {
     const open = elements.shell.classList.toggle('rail-open');
     const button = document.querySelector('#rail-toggle');
@@ -70,16 +86,21 @@ function bindControls() {
   window.addEventListener('hashchange', () => activateView(viewFromHash()));
   elements.avatar.addEventListener('click', (event) => { event.stopPropagation(); toggleAccountMenu(); });
   document.querySelector('#account-settings-button').addEventListener('click', () => { closeAccountMenu(); elements.settingsDialog.showModal(); });
-  document.querySelector('#account-sign-out-button').addEventListener('click', () => location.assign('/signout-with-chatgpt?return_to=/'));
+  document.querySelector('#account-sign-out-button').addEventListener('click', () => signOut(false));
   document.addEventListener('click', (event) => { if (!event.target.closest('.avatar-wrap')) closeAccountMenu(); });
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !elements.accountMenu.hidden) { closeAccountMenu(); elements.avatar.focus(); } });
   document.querySelector('#life-setup-button').addEventListener('click', openLifeSetup);
   document.querySelector('#edit-life-button').addEventListener('click', () => { elements.settingsDialog.close(); openLifeSetup(); });
   document.querySelector('#add-task-button').addEventListener('click', openTaskDialog);
   document.querySelector('#rebuild-button').addEventListener('click', rebuildPlan);
-  document.querySelector('#previous-week').addEventListener('click', () => moveWeek(-7));
-  document.querySelector('#next-week').addEventListener('click', () => moveWeek(7));
-  document.querySelector('#current-week').addEventListener('click', () => { state.anchorDate = new Date(); loadDashboard(); });
+  document.querySelector('#previous-week').addEventListener('click', () => navigateCalendar(-1));
+  document.querySelector('#next-week').addEventListener('click', () => navigateCalendar(1));
+  document.querySelector('#current-week').addEventListener('click', () => { state.anchorDate = new Date(); state.calendarRangeKey = ''; renderSchedule(); });
+  elements.calendarViewButtons.forEach((button) => button.addEventListener('click', () => setCalendarView(button.dataset.calendarView)));
+  elements.calendarFilterButtons.forEach((button) => button.addEventListener('click', () => toggleCalendarFilter(button.dataset.filter)));
+  elements.calendarAddEvent.addEventListener('click', () => openEventDialog());
+  elements.calendarAddTask.addEventListener('click', openTaskDialog);
+  elements.weekBoard.addEventListener('keydown', (event) => { if (event.altKey && event.key === 'ArrowLeft') { event.preventDefault(); navigateCalendar(-1); } if (event.altKey && event.key === 'ArrowRight') { event.preventDefault(); navigateCalendar(1); } });
   elements.analyticsPeriodButtons.forEach((button) => button.addEventListener('click', () => {
     if (state.analyticsPeriod === button.dataset.analyticsPeriod) return;
     state.analyticsPeriod = button.dataset.analyticsPeriod;
@@ -103,13 +124,24 @@ function bindControls() {
   document.querySelector('#add-commitment-row').addEventListener('click', () => addCommitmentRow());
   elements.onboardingForm.addEventListener('submit', saveOnboarding);
   elements.taskForm.addEventListener('submit', saveTask);
+  elements.eventForm.addEventListener('submit', saveCalendarEvent);
+  document.querySelector('#event-all-day').addEventListener('change', updateEventTimeFields);
+  document.querySelector('#event-delete').addEventListener('click', deleteCalendarEvent);
+  document.querySelector('#event-pin-toggle').addEventListener('click', toggleEventPin);
+  document.querySelector('#event-outcome-complete').addEventListener('click', () => saveEventOutcome('completed'));
+  document.querySelector('#event-outcome-missed').addEventListener('click', () => saveEventOutcome('missed'));
   elements.composer.addEventListener('submit', sendChat);
   document.querySelectorAll('[data-prompt]').forEach((button) => button.addEventListener('click', () => { elements.chatInput.value = button.dataset.prompt; elements.chatInput.focus(); }));
   document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => document.querySelector(`#${button.dataset.close}`).close()));
   elements.onboardingClose.addEventListener('click', () => elements.onboardingDialog.close());
   elements.googleConnect.addEventListener('click', handleGoogleAction);
   elements.googleDisconnect.addEventListener('click', disconnectGoogle);
-  document.querySelector('#sign-out-button').addEventListener('click', () => location.assign('/signout-with-chatgpt?return_to=/'));
+  document.querySelector('#sign-out-button').addEventListener('click', () => signOut(false));
+  document.querySelector('#sign-out-all-button').addEventListener('click', () => signOut(true));
+  elements.profileForm.addEventListener('submit', saveProfile);
+  elements.emailForm.addEventListener('submit', changeEmail);
+  elements.passwordForm.addEventListener('submit', changePassword);
+  elements.deleteAccountForm.addEventListener('submit', deleteAccount);
   const params = new URLSearchParams(location.search);
   if (params.get('google') === 'connected') { toast('Google Calendar connected.'); history.replaceState({}, '', `${location.pathname}#today`); }
   if (params.get('google') === 'denied') { toast('Google Calendar connection was cancelled.'); history.replaceState({}, '', `${location.pathname}#today`); }
@@ -142,6 +174,8 @@ async function loadDashboard() {
   try {
     const data = await api(`/api/dashboard?date=${encodeURIComponent(state.anchorDate.toISOString())}`);
     state.data = data;
+    state.csrfToken = data.csrfToken;
+    applyTheme(data.preferences?.theme || preferredTheme());
     renderAll();
     if (!data.user.onboardingComplete && !elements.onboardingDialog.open) openLifeSetup({ firstRun: true });
   } catch (error) {
@@ -155,6 +189,7 @@ async function loadDashboard() {
 
 function renderAll() {
   const { user } = state.data;
+  initializeCalendarPreferences(user.id);
   const initials = user.name.split(/\s|@/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'A';
   elements.avatar.textContent = initials;
   elements.avatar.setAttribute('aria-label', `Open account menu for ${user.name}`);
@@ -162,6 +197,7 @@ function renderAll() {
   document.querySelector('#account-menu-email').textContent = user.email || 'Arcadia account';
   document.querySelector('#account-name').textContent = user.name;
   document.querySelector('#account-email').textContent = user.email;
+  document.querySelector('#account-display-name').value = user.name;
   updateHeader();
   renderToday();
   renderSchedule();
@@ -205,14 +241,16 @@ function initializeTracker() {
   stopTrackerClock();
   state.tracker.userId = userId;
   state.tracker.storageKey = `arcadia-study-tracker:${userId}`;
-  state.tracker.history = [];
+  state.tracker.history = Array.isArray(state.data.studySessions) ? state.data.studySessions.slice(0, 50) : [];
+  let legacy = [];
   try {
     const saved = JSON.parse(localStorage.getItem(state.tracker.storageKey) || '[]');
-    if (Array.isArray(saved)) state.tracker.history = saved.filter((item) => item && Number(item.seconds) > 0 && item.endedAt).slice(0, 50);
+    if (Array.isArray(saved)) legacy = saved.filter((item) => item && Number(item.seconds) > 0 && item.endedAt).slice(0, 50);
   } catch {}
   state.tracker.initialized = true;
   state.tracker.distractions = 0;
   selectTrackerMode('focus');
+  if (legacy.length) migrateLegacyTracker(legacy);
 }
 
 function trackerConfig() {
@@ -328,21 +366,30 @@ function finishTrackerSession() {
   const seconds = state.tracker.mode === 'stopwatch' ? state.tracker.elapsed : Math.max(0, state.tracker.total - state.tracker.remaining);
   if (seconds < 1) { toast('Start the tracker before logging a session.'); renderTracker(); return; }
   logTrackerSession(state.tracker.mode === 'stopwatch' ? 'stopwatch' : state.tracker.phase, seconds);
-  toast('Session saved to this device.');
+  toast('Session saved to your account.');
   resetTracker();
 }
 
-function logTrackerSession(type, seconds) {
-  const entry = { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, type, seconds: Math.max(1, Math.round(seconds)), subject: elements.trackerSubject.value || 'General', goal: elements.trackerGoal.value.trim(), endedAt: new Date().toISOString() };
+async function logTrackerSession(type, seconds) {
+  const entry = { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, type, seconds: Math.max(1, Math.round(seconds)), subject: elements.trackerSubject.value || 'General', goal: elements.trackerGoal.value.trim(), distractions: state.tracker.distractions, endedAt: new Date().toISOString() };
   state.tracker.history.unshift(entry);
   state.tracker.history = state.tracker.history.slice(0, 50);
-  saveTrackerHistory();
   renderTrackerHistory();
   renderTrackerStats();
+  try { state.tracker.history = (await api('/api/study-sessions', { method: 'POST', body: JSON.stringify(entry) })).sessions; renderTrackerHistory(); renderTrackerStats(); }
+  catch (caught) { toast(`Session could not sync: ${caught.message}`); }
 }
 
-function saveTrackerHistory() { try { localStorage.setItem(state.tracker.storageKey, JSON.stringify(state.tracker.history)); } catch {} }
-function clearTrackerHistory() { state.tracker.history = []; saveTrackerHistory(); renderTrackerHistory(); renderTrackerStats(); toast('Study Tracker history cleared.'); }
+async function migrateLegacyTracker(entries) {
+  try {
+    const result = await api('/api/study-sessions', { method: 'POST', body: JSON.stringify({ sessions: entries }) });
+    state.tracker.history = result.sessions; localStorage.removeItem(state.tracker.storageKey); renderTrackerHistory(); renderTrackerStats();
+  } catch (caught) { console.warn('Legacy tracker migration will retry later', caught.message); }
+}
+async function clearTrackerHistory() {
+  try { await api('/api/study-sessions', { method: 'DELETE' }); state.tracker.history = []; renderTrackerHistory(); renderTrackerStats(); toast('Study Tracker history cleared.'); }
+  catch (caught) { toast(caught.message); }
+}
 
 function renderTracker() {
   const tracker = state.tracker;
@@ -531,7 +578,179 @@ async function recordOutcome(event, outcome, item) {
   } finally { state.saving = false; }
 }
 
-function renderSchedule() {
+function initializeCalendarPreferences(userId) {
+  if (state.calendarUserId === userId) return;
+  state.calendarUserId = userId;
+  try {
+    const saved = JSON.parse(localStorage.getItem(`arcadia-calendar:${userId}`) || '{}');
+    if (['day', 'week', 'month'].includes(saved.view)) state.calendarView = saved.view;
+    if (Array.isArray(saved.filters)) state.calendarFilters = new Set(saved.filters.filter((item) => ['school', 'study', 'sport', 'extracurricular', 'other', 'assessment'].includes(item)));
+  } catch {}
+}
+
+function persistCalendarPreferences() {
+  if (!state.calendarUserId) return;
+  try { localStorage.setItem(`arcadia-calendar:${state.calendarUserId}`, JSON.stringify({ view: state.calendarView, filters: [...state.calendarFilters] })); } catch {}
+}
+
+function setCalendarView(view) {
+  if (!['day', 'week', 'month'].includes(view) || state.calendarView === view) return;
+  state.calendarView = view; state.calendarRangeKey = ''; state.calendarScrolled = false;
+  persistCalendarPreferences(); renderSchedule();
+}
+
+function toggleCalendarFilter(filter) {
+  if (state.calendarFilters.has(filter)) state.calendarFilters.delete(filter); else state.calendarFilters.add(filter);
+  persistCalendarPreferences(); renderCalendarContent();
+}
+
+function navigateCalendar(direction) {
+  const timezone = state.data.user.timezone;
+  if (state.calendarView === 'month') {
+    const key = dateKeyInZone(state.anchorDate, timezone); const [year, month, day] = key.split('-').map(Number);
+    const target = new Date(Date.UTC(year, month - 1 + direction, Math.min(day, 28))).toISOString().slice(0, 10);
+    state.anchorDate = new Date(zonedLocalToIso(target, '12:00', timezone));
+  } else state.anchorDate = new Date(state.anchorDate.getTime() + direction * (state.calendarView === 'week' ? 7 : 1) * 86400000);
+  state.calendarRangeKey = ''; state.calendarScrolled = false; renderSchedule();
+}
+
+function calendarRange() {
+  const timezone = state.data.user.timezone; const anchor = dateKeyInZone(state.anchorDate, timezone);
+  let startKey = anchor; let days = 1;
+  if (state.calendarView === 'week') { startKey = shiftDateKey(anchor, -weekdayIndex(anchor)); days = 7; }
+  if (state.calendarView === 'month') {
+    const [year, month] = anchor.split('-').map(Number); const first = `${year}-${String(month).padStart(2, '0')}-01`;
+    startKey = shiftDateKey(first, -weekdayIndex(first)); days = 42;
+  }
+  const endKey = shiftDateKey(startKey, days);
+  return { startKey, endKey, days, start: zonedLocalToIso(startKey, '00:00', timezone), end: zonedLocalToIso(endKey, '00:00', timezone) };
+}
+
+function weekdayIndex(key) { return (new Date(`${key}T00:00:00Z`).getUTCDay() + 6) % 7; }
+function shiftDateKey(key, days) { const [year, month, day] = key.split('-').map(Number); return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10); }
+function displayDateForKey(key) { return new Date(`${key}T12:00:00Z`); }
+
+async function renderSchedule() {
+  if (!state.data) return;
+  elements.calendarViewButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.calendarView === state.calendarView)));
+  elements.calendarFilterButtons.forEach((button) => button.setAttribute('aria-pressed', String(state.calendarFilters.has(button.dataset.filter))));
+  const range = calendarRange(); const timezone = state.data.user.timezone;
+  elements.weekLabel.textContent = state.calendarView === 'day'
+    ? zonedDate(displayDateForKey(range.startKey), 'UTC', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    : state.calendarView === 'month' ? zonedDate(state.anchorDate, timezone, { month: 'long', year: 'numeric' })
+      : `${zonedDate(displayDateForKey(range.startKey), 'UTC', { day: 'numeric', month: 'short' })}–${zonedDate(displayDateForKey(shiftDateKey(range.endKey, -1)), 'UTC', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  const key = `${range.start}|${range.end}`;
+  if (state.calendarRangeKey === key) { renderCalendarContent(); return; }
+  const requestId = ++state.calendarRequest; elements.weekBoard.innerHTML = '<div class="calendar-loading">Loading your calendar...</div>';
+  try {
+    const result = await api(`/api/calendar?start=${encodeURIComponent(range.start)}&end=${encodeURIComponent(range.end)}`);
+    if (requestId !== state.calendarRequest) return;
+    state.calendarEvents = result.events; state.calendarRangeKey = key; renderCalendarContent();
+  } catch (error) { if (requestId === state.calendarRequest) elements.weekBoard.innerHTML = emptyState('Calendar unavailable', error.message); }
+}
+
+function renderCalendarContent() {
+  if (!state.data) return;
+  elements.calendarFilterButtons.forEach((button) => button.setAttribute('aria-pressed', String(state.calendarFilters.has(button.dataset.filter))));
+  if (state.calendarView === 'month') renderMonthCalendar(); else renderTimeCalendar();
+}
+
+function visibleCalendarEvents() { return state.calendarEvents.filter((event) => event.status !== 'cancelled' && state.calendarFilters.has(categoryClass(event))); }
+function visibleAssessmentsForKey(key) {
+  if (!state.calendarFilters.has('assessment')) return [];
+  const timezone = state.data.user.timezone;
+  return state.data.tasks.filter((task) => dateKeyInZone(task.dueAt, timezone) === key && task.status !== 'archived');
+}
+
+function renderTimeCalendar() {
+  const range = calendarRange(); const timezone = state.data.user.timezone; const dayCount = state.calendarView === 'day' ? 1 : 7;
+  const keys = Array.from({ length: dayCount }, (_, index) => shiftDateKey(range.startKey, index)); const todayKey = dateKeyInZone(new Date(), timezone);
+  const root = document.createElement('div'); root.className = `time-calendar${dayCount === 1 ? ' day-view' : ''}`; root.style.setProperty('--calendar-days', dayCount);
+  const heads = document.createElement('div'); heads.className = 'calendar-day-heads'; heads.innerHTML = '<div class="calendar-head-spacer"></div>' + keys.map((key) => `<div class="calendar-day-head${key === todayKey ? ' today' : ''}"><span>${zonedDate(displayDateForKey(key), 'UTC', { weekday: 'short' })}</span><strong>${Number(key.slice(8))}</strong></div>`).join('');
+  const allDay = document.createElement('div'); allDay.className = 'all-day-row'; allDay.innerHTML = '<div class="all-day-label">All day</div>';
+  keys.forEach((key) => {
+    const cell = document.createElement('div'); cell.className = 'all-day-cell'; cell.dataset.date = key;
+    visibleCalendarEvents().filter((event) => event.allDay && allDayEventIncludes(event, key)).forEach((event) => cell.append(calendarAllDayEvent(event)));
+    visibleAssessmentsForKey(key).forEach((task) => { const button = document.createElement('button'); button.type = 'button'; button.className = 'assessment-chip'; button.textContent = `Due · ${task.title}`; button.addEventListener('click', () => openAssessment(task)); cell.append(button); });
+    cell.addEventListener('click', (click) => { if (click.target === cell) openEventDialog({ dateKey: key, allDay: true }); }); allDay.append(cell);
+  });
+  const body = document.createElement('div'); body.className = 'calendar-body'; const labels = document.createElement('div'); labels.className = 'time-labels';
+  for (let hour = 0; hour < 24; hour += 1) { const label = document.createElement('span'); label.className = 'time-label'; label.style.top = `${hour * 64}px`; label.textContent = hour === 0 ? '' : new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).format(new Date(2020, 0, 1, hour)); labels.append(label); }
+  const columns = document.createElement('div'); columns.className = 'calendar-columns';
+  keys.forEach((key) => {
+    const column = document.createElement('div'); column.className = `calendar-column${key === todayKey ? ' today' : ''}`; column.dataset.date = key; column.tabIndex = 0; column.setAttribute('aria-label', `${zonedDate(displayDateForKey(key), 'UTC', { weekday: 'long', day: 'numeric', month: 'long' })} time grid`);
+    column.addEventListener('click', (event) => { if (event.target !== column) return; const rect = column.getBoundingClientRect(); const minute = Math.max(0, Math.min(1425, Math.round(((event.clientY - rect.top) / 64 * 60) / 15) * 15)); openEventDialog({ dateKey: key, minute }); });
+    column.addEventListener('keydown', (event) => { if (event.target === column && event.key === 'Enter') { event.preventDefault(); openEventDialog({ dateKey: key, minute: 9 * 60 }); } });
+    const timed = visibleCalendarEvents().filter((event) => !event.allDay && eventTouchesDay(event, key));
+    layoutTimedEvents(timed, key).forEach((layout) => column.append(calendarTimedEvent(layout, key)));
+    if (key === todayKey) { const now = zonedTime(new Date(), timezone).split(':').map(Number); const line = document.createElement('div'); line.className = 'now-line'; line.style.top = `${(now[0] * 60 + now[1]) / 60 * 64}px`; column.append(line); }
+    columns.append(column);
+  });
+  body.append(labels, columns); root.append(heads, allDay, body); elements.weekBoard.replaceChildren(root);
+  if (!state.calendarScrolled) { state.calendarScrolled = true; requestAnimationFrame(() => { const nowMinutes = keys.includes(todayKey) ? Number(zonedTime(new Date(), timezone).slice(0, 2)) * 60 : earliestVisibleMinute(); elements.weekBoard.scrollTop = Math.max(0, nowMinutes / 60 * 64 - 150); }); }
+}
+
+function allDayEventIncludes(event, key) { return event.startAt.slice(0, 10) <= key && event.endAt.slice(0, 10) > key; }
+function eventTouchesDay(event, key) { const timezone = state.data.user.timezone; return dateKeyInZone(event.startAt, timezone) <= key && dateKeyInZone(new Date(Date.parse(event.endAt) - 1), timezone) >= key; }
+function eventMinutesForDay(event, key) {
+  const timezone = state.data.user.timezone; const startKey = dateKeyInZone(event.startAt, timezone); const endKey = dateKeyInZone(new Date(Date.parse(event.endAt) - 1), timezone);
+  const start = startKey < key ? 0 : timeToMinutes(zonedTime(event.startAt, timezone)); const end = endKey > key ? 1440 : Math.max(start + 15, timeToMinutes(zonedTime(event.endAt, timezone)));
+  return { start, end: Math.min(1440, end) };
+}
+function layoutTimedEvents(events, key) {
+  const sorted = events.map((event) => ({ event, ...eventMinutesForDay(event, key) })).sort((a, b) => a.start - b.start || b.end - a.end); const lanes = [];
+  sorted.forEach((item) => { let lane = lanes.findIndex((end) => end <= item.start); if (lane < 0) lane = lanes.length; lanes[lane] = item.end; item.lane = lane; });
+  const count = Math.max(1, lanes.length); return sorted.map((item) => ({ ...item, laneCount: count }));
+}
+
+function calendarTimedEvent(layout, key) {
+  const { event, start, end, lane, laneCount } = layout; const button = document.createElement('button'); button.type = 'button';
+  button.className = `calendar-event ${categoryClass(event)}${event.outcome === 'completed' ? ' completed' : ''}${event.editable ? '' : ' readonly'}`;
+  button.style.top = `${start / 60 * 64}px`; button.style.height = `${Math.max(22, (end - start) / 60 * 64)}px`; button.style.setProperty('--event-left', lane / laneCount * 100); button.style.setProperty('--event-width', 100 / laneCount);
+  button.innerHTML = `<span class="calendar-event-time">${escapeHtml(formatTime(event.startAt, state.data.user.timezone))}–${escapeHtml(formatTime(event.endAt, state.data.user.timezone))}${event.pinned ? '<span class="event-pin">●</span>' : ''}</span><span class="calendar-event-title">${escapeHtml(event.title)}</span><span class="calendar-event-meta">${escapeHtml(event.subject || event.location || event.category)}</span>${event.editable ? '<span class="event-resize" aria-hidden="true"></span>' : ''}`;
+  button.setAttribute('aria-label', `${event.title}, ${formatTime(event.startAt, state.data.user.timezone)} to ${formatTime(event.endAt, state.data.user.timezone)}${event.editable ? ', movable event' : ', read only'}`);
+  button.addEventListener('click', () => { if (!state.drag?.didMove) openEventDialog({ event }); });
+  if (event.editable) button.addEventListener('pointerdown', (pointer) => beginEventDrag(pointer, event, button, key, pointer.target.classList.contains('event-resize')));
+  return button;
+}
+
+function calendarAllDayEvent(event) { const button = document.createElement('button'); button.type = 'button'; button.className = 'all-day-event'; button.textContent = event.title; button.addEventListener('click', () => openEventDialog({ event })); return button; }
+
+function renderMonthCalendar() {
+  const range = calendarRange(); const timezone = state.data.user.timezone; const todayKey = dateKeyInZone(new Date(), timezone); const anchorMonth = dateKeyInZone(state.anchorDate, timezone).slice(0, 7);
+  const root = document.createElement('div'); root.className = 'month-calendar'; ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach((day) => root.insertAdjacentHTML('beforeend', `<div class="month-weekday">${day}</div>`));
+  for (let index = 0; index < 42; index += 1) {
+    const key = shiftDateKey(range.startKey, index); const cell = document.createElement('div'); cell.className = `month-day${key.slice(0, 7) === anchorMonth ? '' : ' outside'}${key === todayKey ? ' today' : ''}`; cell.tabIndex = 0; cell.dataset.date = key; cell.setAttribute('role', 'button'); cell.innerHTML = `<span class="month-day-number">${Number(key.slice(8))}</span>`;
+    const events = visibleCalendarEvents().filter((event) => event.allDay ? allDayEventIncludes(event, key) : dateKeyInZone(event.startAt, timezone) === key);
+    const items = [...events.map((event) => ({ type: 'event', value: event })), ...visibleAssessmentsForKey(key).map((task) => ({ type: 'assessment', value: task }))];
+    items.slice(0, 3).forEach((item) => {
+      const chip = document.createElement('span'); chip.className = `month-event${item.type === 'assessment' ? ' assessment' : ''}`; chip.textContent = item.type === 'assessment' ? `Due · ${item.value.title}` : `${item.value.allDay ? '' : formatTime(item.value.startAt, timezone) + ' · '}${item.value.title}`;
+      chip.addEventListener('click', (click) => { click.stopPropagation(); if (item.type === 'assessment') openAssessment(item.value); else openEventDialog({ event: item.value }); });
+      if (item.type === 'event' && item.value.editable && item.value.outcome === 'planned') { chip.draggable = true; chip.addEventListener('dragstart', (drag) => { drag.dataTransfer.setData('text/arcadia-event', item.value.id); drag.dataTransfer.effectAllowed = 'move'; }); }
+      cell.append(chip);
+    });
+    if (items.length > 3) cell.insertAdjacentHTML('beforeend', `<span class="month-more">+${items.length - 3} more</span>`);
+    cell.addEventListener('dragover', (drag) => { if (drag.dataTransfer.types.includes('text/arcadia-event')) { drag.preventDefault(); drag.dataTransfer.dropEffect = 'move'; } });
+    cell.addEventListener('drop', async (drop) => { drop.preventDefault(); drop.stopPropagation(); const event = state.calendarEvents.find((item) => item.id === drop.dataTransfer.getData('text/arcadia-event')); if (event) await moveMonthEvent(event, key); });
+    cell.addEventListener('click', () => { state.anchorDate = new Date(zonedLocalToIso(key, '12:00', timezone)); setCalendarView('day'); });
+    cell.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); cell.click(); } }); root.append(cell);
+  }
+  elements.weekBoard.replaceChildren(root);
+}
+
+function earliestVisibleMinute() { const timezone = state.data.user.timezone; const minutes = visibleCalendarEvents().filter((event) => !event.allDay).map((event) => timeToMinutes(zonedTime(event.startAt, timezone))); return minutes.length ? Math.max(0, Math.min(...minutes) - 60) : 7 * 60; }
+function timeToMinutes(time) { const [hour, minute] = time.split(':').map(Number); return hour * 60 + minute; }
+
+async function moveMonthEvent(event, targetKey) {
+  const timezone = state.data.user.timezone; const sourceKey = event.allDay ? event.startAt.slice(0, 10) : dateKeyInZone(event.startAt, timezone); const dayDelta = Math.round((Date.parse(`${targetKey}T00:00:00Z`) - Date.parse(`${sourceKey}T00:00:00Z`)) / 86400000); if (!dayDelta) return;
+  const next = event.allDay ? { startAt: `${shiftDateKey(event.startAt.slice(0, 10), dayDelta)}T00:00:00.000Z`, endAt: `${shiftDateKey(event.endAt.slice(0, 10), dayDelta)}T00:00:00.000Z` } : adjustedEventTimes(event, 0, dayDelta, false); next.pinned = event.category === 'study' && event.taskId ? true : event.pinned;
+  const original = { ...event }; state.calendarEvents = state.calendarEvents.map((item) => item.id === event.id ? { ...event, ...next } : item); renderCalendarContent();
+  try { const result = await api(`/api/events/${encodeURIComponent(event.id)}`, { method: 'PATCH', body: JSON.stringify(next) }); state.calendarEvents = state.calendarEvents.map((item) => item.id === event.id ? result.event : item); toast(next.pinned && !event.pinned ? 'Study block moved and pinned.' : 'Event moved.'); }
+  catch (error) { state.calendarEvents = state.calendarEvents.map((item) => item.id === event.id ? original : item); const conflict = error.data?.conflicts?.[0]; toast(conflict ? `${error.message} It conflicts with ${conflict.title}.` : error.message); }
+  renderCalendarContent();
+}
+
+function renderScheduleLegacy() {
   const { range, events, user } = state.data;
   elements.weekLabel.textContent = formatRange(range, user.timezone);
   elements.weekBoard.innerHTML = '';
@@ -555,6 +774,85 @@ function renderSchedule() {
     });
     elements.weekBoard.append(column);
   }
+}
+
+function beginEventDrag(pointer, event, node, key, resizing) {
+  if (pointer.button !== 0 || event.outcome !== 'planned') return;
+  pointer.preventDefault(); node.setPointerCapture(pointer.pointerId);
+  const columnWidth = node.parentElement.getBoundingClientRect().width; const origin = { ...event };
+  state.drag = { event, node, key, resizing, startX: pointer.clientX, startY: pointer.clientY, columnWidth, origin, didMove: false, pointerId: pointer.pointerId };
+  const move = (current) => {
+    if (!state.drag || current.pointerId !== state.drag.pointerId) return;
+    const dx = current.clientX - state.drag.startX; const dy = current.clientY - state.drag.startY;
+    if (!state.drag.didMove && Math.hypot(dx, dy) < 6) return;
+    state.drag.didMove = true; node.classList.add('calendar-dragging');
+    const minuteDelta = Math.round((dy / 64 * 60) / 15) * 15; const dayDelta = state.calendarView === 'week' && !resizing ? Math.max(-6, Math.min(6, Math.round(dx / columnWidth))) : 0;
+    state.drag.preview = adjustedEventTimes(origin, minuteDelta, dayDelta, resizing);
+    if (resizing) node.style.height = `${Math.max(22, minutesBetween(origin.startAt, state.drag.preview.endAt) / 60 * 64)}px`; else node.style.transform = `translate(${dayDelta * columnWidth}px,${minuteDelta / 60 * 64}px)`;
+  };
+  const finish = async (current) => {
+    if (!state.drag || current.pointerId !== state.drag.pointerId) return;
+    document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', finish); document.removeEventListener('pointercancel', cancel);
+    const drag = state.drag; node.classList.remove('calendar-dragging'); node.style.transform = ''; node.style.height = '';
+    if (!drag.didMove || !drag.preview) { setTimeout(() => { state.drag = null; }, 0); return; }
+    const next = { ...event, ...drag.preview, pinned: event.category === 'study' && event.taskId ? true : event.pinned };
+    state.calendarEvents = state.calendarEvents.map((item) => item.id === event.id ? next : item); renderCalendarContent();
+    try {
+      const result = await api(`/api/events/${encodeURIComponent(event.id)}`, { method: 'PATCH', body: JSON.stringify({ startAt: next.startAt, endAt: next.endAt, pinned: next.pinned }) });
+      state.calendarEvents = state.calendarEvents.map((item) => item.id === event.id ? result.event : item); toast(next.pinned && !event.pinned ? 'Study block moved and pinned.' : 'Event moved.');
+    } catch (error) {
+      state.calendarEvents = state.calendarEvents.map((item) => item.id === event.id ? origin : item); const conflict = error.data?.conflicts?.[0]; toast(conflict ? `${error.message} It conflicts with ${conflict.title}.` : error.message);
+    } finally { state.drag = null; renderCalendarContent(); }
+  };
+  const cancel = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', finish); document.removeEventListener('pointercancel', cancel); state.drag = null; renderCalendarContent(); };
+  document.addEventListener('pointermove', move); document.addEventListener('pointerup', finish); document.addEventListener('pointercancel', cancel);
+}
+
+function adjustedEventTimes(event, minuteDelta, dayDelta, resizing) {
+  const timezone = state.data.user.timezone;
+  if (resizing) return { startAt: event.startAt, endAt: new Date(Math.max(Date.parse(event.startAt) + 15 * 60000, Date.parse(event.endAt) + minuteDelta * 60000)).toISOString() };
+  const key = shiftDateKey(dateKeyInZone(event.startAt, timezone), dayDelta); const originalMinutes = timeToMinutes(zonedTime(event.startAt, timezone)); const total = originalMinutes + minuteDelta;
+  const normalizedKey = shiftDateKey(key, Math.floor(total / 1440)); const normalizedMinutes = ((total % 1440) + 1440) % 1440; const time = `${String(Math.floor(normalizedMinutes / 60)).padStart(2, '0')}:${String(normalizedMinutes % 60).padStart(2, '0')}`;
+  const startAt = zonedLocalToIso(normalizedKey, time, timezone); return { startAt, endAt: new Date(Date.parse(startAt) + (Date.parse(event.endAt) - Date.parse(event.startAt))).toISOString() };
+}
+
+function openEventDialog({ event = null, dateKey = null, minute = null, allDay = false } = {}) {
+  const timezone = state.data.user.timezone; state.editingEvent = event;
+  const subject = document.querySelector('#event-subject'); subject.innerHTML = '<option value="">General</option>'; state.data.subjects.forEach((item) => subject.add(new Option(item.name, item.name)));
+  const nowKey = dateKey || dateKeyInZone(state.anchorDate, timezone); const startMinute = minute ?? Math.ceil(timeToMinutes(zonedTime(new Date(), timezone)) / 15) * 15;
+  const defaultStart = `${String(Math.floor(startMinute / 60) % 24).padStart(2, '0')}:${String(startMinute % 60).padStart(2, '0')}`; const defaultEndMinute = Math.min(1439, startMinute + 60); const defaultEnd = `${String(Math.floor(defaultEndMinute / 60)).padStart(2, '0')}:${String(defaultEndMinute % 60).padStart(2, '0')}`;
+  document.querySelector('#event-title').value = event?.title || ''; document.querySelector('#event-category').value = categoryClass(event || { category: 'study' }); setSelectValue(subject, event?.subject || '');
+  document.querySelector('#event-all-day').checked = event?.allDay ?? allDay;
+  document.querySelector('#event-start-date').value = event ? (event.allDay ? event.startAt.slice(0, 10) : dateKeyInZone(event.startAt, timezone)) : nowKey;
+  document.querySelector('#event-end-date').value = event ? (event.allDay ? event.endAt.slice(0, 10) : dateKeyInZone(event.endAt, timezone)) : (allDay ? shiftDateKey(nowKey, 1) : nowKey);
+  document.querySelector('#event-start-time').value = event && !event.allDay ? zonedTime(event.startAt, timezone) : defaultStart; document.querySelector('#event-end-time').value = event && !event.allDay ? zonedTime(event.endAt, timezone) : defaultEnd;
+  document.querySelector('#event-location').value = event?.location || ''; document.querySelector('#event-description').value = event?.description || ''; elements.eventError.textContent = '';
+  const editable = !event || (event.editable && event.source === 'arcadia'); elements.eventForm.querySelectorAll('input,select,textarea').forEach((control) => { control.disabled = !editable; });
+  document.querySelector('#event-dialog-title').textContent = event ? event.title : 'New event'; document.querySelector('#event-dialog-eyebrow').textContent = event ? (event.source === 'google' ? 'Google Calendar' : event.commitmentId ? 'Life commitment' : 'Arcadia event') : 'Calendar event';
+  const note = document.querySelector('#event-dialog-note'); note.hidden = editable; note.textContent = event?.source === 'google' ? 'This imported event is read-only. Make changes in Google Calendar.' : 'This recurring commitment is read-only here. Make changes in Life setup.';
+  document.querySelector('#event-save').hidden = !editable; document.querySelector('#event-delete').hidden = !event || !editable; const plannedStudy = event?.category === 'study' && event.outcome === 'planned';
+  document.querySelector('#event-outcome-complete').hidden = !plannedStudy; document.querySelector('#event-outcome-missed').hidden = !plannedStudy; const pin = document.querySelector('#event-pin-toggle'); pin.hidden = !(event?.taskId && plannedStudy && editable); pin.textContent = event?.pinned ? 'Unpin' : 'Pin';
+  updateEventTimeFields(); elements.eventDialog.showModal(); if (editable) document.querySelector('#event-title').focus();
+}
+
+function updateEventTimeFields() { const allDay = document.querySelector('#event-all-day').checked; ['#event-start-time','#event-end-time'].forEach((selector) => { const input = document.querySelector(selector); input.disabled = allDay || (state.editingEvent && (!state.editingEvent.editable || state.editingEvent.source !== 'arcadia')); input.required = !allDay; }); }
+
+async function saveCalendarEvent(submit) {
+  submit.preventDefault(); if (state.saving) return; const timezone = state.data.user.timezone; const allDay = document.querySelector('#event-all-day').checked; const startDate = document.querySelector('#event-start-date').value; const endDate = document.querySelector('#event-end-date').value;
+  const startAt = allDay ? `${startDate}T00:00:00.000Z` : zonedLocalToIso(startDate, document.querySelector('#event-start-time').value, timezone); const endAt = allDay ? `${endDate}T00:00:00.000Z` : zonedLocalToIso(endDate, document.querySelector('#event-end-time').value, timezone);
+  const category = document.querySelector('#event-category').value; const body = { title: document.querySelector('#event-title').value.trim(), category, kind: category === 'study' ? 'study' : category === 'sport' ? 'training' : 'general', subject: document.querySelector('#event-subject').value || null, location: document.querySelector('#event-location').value.trim(), description: document.querySelector('#event-description').value.trim(), allDay, startAt, endAt, pinned: state.editingEvent?.pinned || false };
+  state.saving = true; elements.eventError.textContent = '';
+  try {
+    const path = state.editingEvent ? `/api/events/${encodeURIComponent(state.editingEvent.id)}` : '/api/events'; const result = await api(path, { method: state.editingEvent ? 'PATCH' : 'POST', body: JSON.stringify(body) }); elements.eventDialog.close(); toast(state.editingEvent ? 'Event updated.' : 'Event added.'); state.calendarRangeKey = ''; await renderSchedule();
+  } catch (error) { const conflict = error.data?.conflicts?.[0]; elements.eventError.textContent = conflict ? `${error.message} It conflicts with ${conflict.title}.` : error.message; } finally { state.saving = false; }
+}
+
+async function deleteCalendarEvent() { const event = state.editingEvent; if (!event || state.saving) return; state.saving = true; try { await api(`/api/events/${encodeURIComponent(event.id)}`, { method: 'DELETE' }); elements.eventDialog.close(); toast('Event deleted.'); state.calendarRangeKey = ''; await renderSchedule(); } catch (error) { elements.eventError.textContent = error.message; } finally { state.saving = false; } }
+async function toggleEventPin() { const event = state.editingEvent; if (!event || state.saving) return; state.saving = true; try { const result = await api(`/api/events/${encodeURIComponent(event.id)}`, { method: 'PATCH', body: JSON.stringify({ pinned: !event.pinned }) }); state.editingEvent = result.event; elements.eventDialog.close(); toast(result.event.pinned ? 'Study block pinned.' : 'Study block can adapt again.'); state.calendarRangeKey = ''; await renderSchedule(); } catch (error) { elements.eventError.textContent = error.message; } finally { state.saving = false; } }
+async function saveEventOutcome(outcome) { const event = state.editingEvent; if (!event || state.saving) return; state.saving = true; try { const result = await api(`/api/events/${encodeURIComponent(event.id)}/outcome`, { method: 'POST', body: JSON.stringify({ outcome }) }); elements.eventDialog.close(); toast(result.message); state.calendarRangeKey = ''; await loadDashboard(); } catch (error) { elements.eventError.textContent = error.message; } finally { state.saving = false; } }
+
+function openAssessment(task) {
+  const completed = Math.max(0, task.estimatedMinutes - task.remainingMinutes); elements.assessmentDetail.innerHTML = `<div class="connection-card"><strong>${escapeHtml(task.title)}</strong><p>${escapeHtml(task.subject || 'General')} · ${escapeHtml(task.taskType)} · Due ${escapeHtml(formatDue(task.dueAt, state.data.user.timezone))}</p><div class="progress-track"><div class="progress-fill" style="width:${task.estimatedMinutes ? Math.round(completed / task.estimatedMinutes * 100) : 0}%"></div></div><p>${formatDuration(task.remainingMinutes)} remaining of ${formatDuration(task.estimatedMinutes)} · ${task.status}</p>${task.notes ? `<p>${escapeHtml(task.notes)}</p>` : ''}</div>`; document.querySelector('#assessment-title').textContent = task.title; elements.assessmentDialog.showModal();
 }
 
 function renderMentor() {
@@ -798,16 +1096,58 @@ function appendMessage(role, content) { const node = document.createElement('div
 function operationSummary(operation) { const verb = operation.action === 'create' ? 'Add' : 'Move'; return `${verb} ${escapeHtml(operation.title || 'plan item')} · ${escapeHtml(formatDateTime(operation.startAt, state.data.user.timezone))}`; }
 function categoryClass(event) { return ['school', 'study', 'sport', 'extracurricular', 'other'].includes(event.category) ? event.category : (event.kind === 'training' ? 'sport' : event.kind === 'study' ? 'study' : 'other'); }
 function firstName(value) { return String(value || '').split(/[\s@]/)[0] || 'You'; }
-function preferredTheme() { try { const saved = localStorage.getItem('arcadia-theme'); return ['light', 'dark', 'midnight'].includes(saved) ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { return 'light'; } }
+function preferredTheme() { try { const saved = localStorage.getItem('arcadia-theme'); return themes.includes(saved) ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { return 'light'; } }
 function applyTheme(theme) {
-  const safeTheme = ['light', 'dark', 'midnight'].includes(theme) ? theme : 'light';
+  const safeTheme = themes.includes(theme) ? theme : 'light';
   document.documentElement.dataset.theme = safeTheme;
   try { localStorage.setItem('arcadia-theme', safeTheme); } catch {}
   updateThemeControls();
 }
+async function saveTheme(theme) {
+  applyTheme(theme);
+  try { await api('/api/account', { method: 'PATCH', body: JSON.stringify({ theme }) }); if (state.data?.preferences) state.data.preferences.theme = theme; }
+  catch (caught) { toast(caught.message); }
+}
+
+async function saveProfile(event) {
+  event.preventDefault(); const error = document.querySelector('#profile-error'); error.textContent = '';
+  try {
+    const result = await api('/api/account', { method: 'PATCH', body: JSON.stringify({ name: document.querySelector('#account-display-name').value }) });
+    state.data.user.name = result.account.name; renderAll(); toast('Profile saved.');
+  } catch (caught) { error.textContent = caught.message; }
+}
+
+async function changeEmail(event) {
+  event.preventDefault(); const error = document.querySelector('#email-error'); error.textContent = '';
+  try {
+    const result = await api('/api/account/change-email', { method: 'POST', body: JSON.stringify({ email: document.querySelector('#new-email').value, currentPassword: document.querySelector('#email-password').value }) });
+    elements.emailForm.reset(); toast(result.message);
+  } catch (caught) { error.textContent = caught.message; }
+}
+
+async function changePassword(event) {
+  event.preventDefault(); const error = document.querySelector('#password-error'); error.textContent = '';
+  try {
+    const result = await api('/api/account/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: document.querySelector('#current-password').value, newPassword: document.querySelector('#new-password').value }) });
+    state.csrfToken = result.csrfToken; elements.passwordForm.reset(); toast('Password updated. Other devices have been signed out.');
+  } catch (caught) { error.textContent = caught.message; }
+}
+
+async function signOut(everywhere = false) {
+  try { await api(everywhere ? '/api/auth/logout-all' : '/api/auth/logout', { method: 'POST' }); }
+  catch (caught) { if (caught.status !== 401) { toast(caught.message); return; } }
+  location.assign('/login');
+}
+
+async function deleteAccount(event) {
+  event.preventDefault(); const error = document.querySelector('#delete-error'); error.textContent = '';
+  try {
+    await api('/api/account', { method: 'DELETE', body: JSON.stringify({ password: document.querySelector('#delete-password').value, confirmation: document.querySelector('#delete-confirmation').value }) });
+    location.assign('/register');
+  } catch (caught) { error.textContent = caught.message; }
+}
 function updateThemeControls() {
   const theme = document.documentElement.dataset.theme || 'light';
-  const themeColours = { light: '#f4f5f9', dark: '#22242d', midnight: '#020309' };
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColours[theme] || themeColours.light);
   if (elements.themeSelect) elements.themeSelect.value = theme;
 }
@@ -850,8 +1190,9 @@ function escapeAttr(value) { return escapeHtml(value); }
 function toast(message) { elements.toast.textContent = message; elements.toast.classList.add('visible'); clearTimeout(toast.timer); toast.timer = setTimeout(() => elements.toast.classList.remove('visible'), 4200); }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, { ...options, headers: { ...(options.body ? { 'content-type': 'application/json' } : {}), ...(options.headers || {}) } });
+  const method = String(options.method || 'GET').toUpperCase();
+  const response = await fetch(path, { ...options, headers: { ...(options.body ? { 'content-type': 'application/json' } : {}), ...(!['GET', 'HEAD', 'OPTIONS'].includes(method) && state.csrfToken ? { 'x-csrf-token': state.csrfToken } : {}), ...(options.headers || {}) } });
   let data = {}; try { data = await response.json(); } catch { data = {}; }
-  if (!response.ok) { const error = new Error(data.error || 'Arcadia could not complete that request.'); error.status = response.status; error.data = data; throw error; }
+  if (!response.ok) { if (response.status === 401 && location.pathname !== '/login') location.assign('/login'); const error = new Error(data.error || 'Arcadia could not complete that request.'); error.status = response.status; error.data = data; throw error; }
   return data;
 }

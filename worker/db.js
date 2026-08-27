@@ -20,11 +20,53 @@ export async function ensureDatabase(env) {
   let schemaPromise = schemaPromises.get(env.DB);
   if (!schemaPromise) {
     schemaPromise = (async () => {
-      for (const sql of schemaStatements) await env.DB.prepare(sql).run();
+      const isIndex = (sql) => /^CREATE\s+(?:UNIQUE\s+)?INDEX/i.test(sql.trim());
+      for (const sql of schemaStatements.filter((statement) => !isIndex(statement))) await env.DB.prepare(sql).run();
+      await ensureColumn(env, "user_preferences", "theme", "TEXT NOT NULL DEFAULT 'light' CHECK (length(theme) BETWEEN 1 AND 32)");
+      await ensureThemeConstraint(env);
+      await ensureColumn(env, "study_sessions", "client_id", "TEXT");
+      await ensureColumn(env, "study_sessions", "mode", "TEXT NOT NULL DEFAULT 'focus' CHECK (mode IN ('focus', 'stopwatch', 'rest'))");
+      await ensureColumn(env, "study_sessions", "goal", "TEXT NOT NULL DEFAULT ''");
+      await ensureColumn(env, "study_sessions", "duration_seconds", "INTEGER NOT NULL DEFAULT 0 CHECK (duration_seconds >= 0)");
+      await ensureColumn(env, "study_sessions", "distractions", "INTEGER NOT NULL DEFAULT 0 CHECK (distractions >= 0)");
+      await ensureColumn(env, "auth_rate_limits", "identity_hash", "TEXT NOT NULL DEFAULT ''");
+      await ensureColumn(env, "events", "pinned", "INTEGER NOT NULL DEFAULT 0");
+      for (const sql of schemaStatements.filter(isIndex)) await env.DB.prepare(sql).run();
     })().catch((error) => { schemaPromises.delete(env.DB); throw error; });
     schemaPromises.set(env.DB, schemaPromise);
   }
   await schemaPromise;
+}
+
+async function ensureColumn(env, table, column, definition) {
+  const info = await env.DB.prepare(`PRAGMA table_info(${table})`).all();
+  if (!(info.results || []).some((item) => item.name === column)) await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+}
+
+async function ensureThemeConstraint(env) {
+  const row = await env.DB.prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'user_preferences'").first();
+  if (!row?.sql || /length\s*\(\s*theme\s*\)/i.test(row.sql)) return;
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS user_preferences_next (
+    user_id TEXT PRIMARY KEY,
+    bedtime TEXT NOT NULL DEFAULT '22:30',
+    wake_time TEXT NOT NULL DEFAULT '06:30',
+    minimum_sleep_minutes INTEGER NOT NULL DEFAULT 480 CHECK (minimum_sleep_minutes BETWEEN 360 AND 720),
+    max_daily_study_minutes INTEGER NOT NULL DEFAULT 180 CHECK (max_daily_study_minutes BETWEEN 60 AND 480),
+    preferred_session_minutes INTEGER NOT NULL DEFAULT 60 CHECK (preferred_session_minutes BETWEEN 25 AND 120),
+    break_minutes INTEGER NOT NULL DEFAULT 15 CHECK (break_minutes BETWEEN 5 AND 60),
+    theme TEXT NOT NULL DEFAULT 'light' CHECK (length(theme) BETWEEN 1 AND 32),
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES profiles(user_id) ON DELETE CASCADE
+  )`).run();
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO user_preferences_next (
+      user_id, bedtime, wake_time, minimum_sleep_minutes, max_daily_study_minutes,
+      preferred_session_minutes, break_minutes, theme, updated_at
+    ) SELECT user_id, bedtime, wake_time, minimum_sleep_minutes, max_daily_study_minutes,
+      preferred_session_minutes, break_minutes, theme, updated_at FROM user_preferences`),
+    env.DB.prepare("DROP TABLE user_preferences"),
+    env.DB.prepare("ALTER TABLE user_preferences_next RENAME TO user_preferences")
+  ]);
 }
 
 export async function upsertProfile(env, user) {
@@ -54,13 +96,47 @@ export async function getPreferences(env, userId) {
   const row = await env.DB.prepare(`
     SELECT bedtime, wake_time AS wakeTime, minimum_sleep_minutes AS minimumSleepMinutes,
       max_daily_study_minutes AS maxDailyStudyMinutes, preferred_session_minutes AS preferredSessionMinutes,
-      break_minutes AS breakMinutes, updated_at AS updatedAt
+      break_minutes AS breakMinutes, theme, updated_at AS updatedAt
     FROM user_preferences WHERE user_id = ?
   `).bind(userId).first();
   return row || {
     bedtime: "22:30", wakeTime: "06:30", minimumSleepMinutes: 480,
-    maxDailyStudyMinutes: 180, preferredSessionMinutes: 60, breakMinutes: 15
+    maxDailyStudyMinutes: 180, preferredSessionMinutes: 60, breakMinutes: 15, theme: "light"
   };
+}
+
+export async function listStudySessions(env, userId, limit = 50) {
+  const result = await env.DB.prepare(`
+    SELECT id, client_id AS clientId, mode AS type, subject, goal,
+      CASE WHEN duration_seconds > 0 THEN duration_seconds ELSE duration_minutes * 60 END AS seconds,
+      distractions, started_at AS startedAt, ended_at AS endedAt
+    FROM study_sessions WHERE user_id = ? AND event_id IS NULL
+    ORDER BY ended_at DESC LIMIT ?
+  `).bind(userId, Math.min(100, Math.max(1, Number(limit) || 50))).all();
+  return result.results || [];
+}
+
+export async function saveStudySessions(env, userId, entries) {
+  const now = new Date().toISOString();
+  const statements = entries.map((entry) => {
+    const seconds = Math.max(1, Math.min(24 * 60 * 60, Math.round(Number(entry.seconds) || 0)));
+    const ended = new Date(entry.endedAt); const endedAt = Number.isNaN(ended.valueOf()) ? now : ended.toISOString();
+    const startedAt = new Date(Date.parse(endedAt) - seconds * 1000).toISOString();
+    const clientId = String(entry.id || crypto.randomUUID()).slice(0, 120);
+    const mode = ["focus", "stopwatch", "rest"].includes(entry.type) ? entry.type : "focus";
+    return env.DB.prepare(`INSERT OR IGNORE INTO study_sessions
+      (id, user_id, event_id, client_id, subject, mode, goal, duration_seconds, distractions, started_at, ended_at, duration_minutes, created_at)
+      VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(crypto.randomUUID(), userId, clientId, String(entry.subject || "General").trim().slice(0, 80) || "General", mode,
+        String(entry.goal || "").trim().slice(0, 120), seconds, Math.max(0, Math.min(999, Math.round(Number(entry.distractions) || 0))),
+        startedAt, endedAt, Math.max(1, Math.round(seconds / 60)), now);
+  });
+  if (statements.length) await env.DB.batch(statements);
+  return listStudySessions(env, userId);
+}
+
+export async function clearStudySessions(env, userId) {
+  await env.DB.prepare("DELETE FROM study_sessions WHERE user_id = ? AND event_id IS NULL").bind(userId).run();
 }
 
 export async function listSubjects(env, userId) {
@@ -253,7 +329,7 @@ export async function listEvents(env, userId, start, end, { includeCancelled = f
     SELECT id, source, external_id AS externalId, calendar_id AS calendarId, title, description, kind,
       subject, location, start_at AS startAt, end_at AS endAt, all_day AS allDay, status, editable,
       recurrence, sync_status AS syncStatus, task_id AS taskId, commitment_id AS commitmentId,
-      event_category AS category, outcome, occurrence_key AS occurrenceKey
+      event_category AS category, outcome, occurrence_key AS occurrenceKey, pinned
     FROM events
     WHERE user_id = ? AND start_at < ? AND end_at > ? AND (? = 1 OR status != 'cancelled')
     ORDER BY start_at ASC
@@ -266,7 +342,7 @@ export async function getEvent(env, userId, id) {
     SELECT id, source, external_id AS externalId, calendar_id AS calendarId, title, description, kind,
       subject, location, start_at AS startAt, end_at AS endAt, all_day AS allDay, status, editable,
       recurrence, sync_status AS syncStatus, task_id AS taskId, commitment_id AS commitmentId,
-      event_category AS category, outcome, occurrence_key AS occurrenceKey
+      event_category AS category, outcome, occurrence_key AS occurrenceKey, pinned
     FROM events WHERE id = ? AND user_id = ?
   `).bind(id, userId).first();
   return row ? normalizeEvent(row) : null;
@@ -281,16 +357,16 @@ export async function createEvent(env, userId, input) {
     endAt: input.endAt, allDay: Boolean(input.allDay), status: "planned", editable: true,
     recurrence: input.recurrence || null, syncStatus: "local", taskId: input.taskId || null,
     commitmentId: input.commitmentId || null, category: input.category || categoryForKind(input.kind),
-    outcome: "planned", occurrenceKey: input.occurrenceKey || null
+    outcome: "planned", occurrenceKey: input.occurrenceKey || null, pinned: Boolean(input.pinned)
   };
   await env.DB.prepare(`
     INSERT INTO events (id, user_id, source, title, description, kind, subject, location, start_at, end_at,
       all_day, status, editable, recurrence, sync_status, task_id, commitment_id, event_category, outcome,
-      occurrence_key, created_at, updated_at)
-    VALUES (?, ?, 'arcadia', ?, ?, ?, ?, ?, ?, ?, ?, 'planned', 1, ?, 'local', ?, ?, ?, 'planned', ?, ?, ?)
+      occurrence_key, pinned, created_at, updated_at)
+    VALUES (?, ?, 'arcadia', ?, ?, ?, ?, ?, ?, ?, ?, 'planned', 1, ?, 'local', ?, ?, ?, 'planned', ?, ?, ?, ?)
   `).bind(event.id, userId, event.title, event.description, event.kind, event.subject, event.location,
     event.startAt, event.endAt, event.allDay ? 1 : 0, event.recurrence, event.taskId, event.commitmentId,
-    event.category, event.occurrenceKey, now, now).run();
+    event.category, event.occurrenceKey, event.pinned ? 1 : 0, now, now).run();
   return event;
 }
 
@@ -300,11 +376,11 @@ export async function updateEvent(env, userId, id, input) {
   const next = { ...existing, ...input, id, source: "arcadia", editable: true };
   await env.DB.prepare(`
     UPDATE events SET title = ?, description = ?, kind = ?, subject = ?, location = ?, start_at = ?, end_at = ?,
-      all_day = ?, recurrence = ?, event_category = ?, sync_status = CASE WHEN external_id IS NULL THEN 'local' ELSE 'pending' END, updated_at = ?
+      all_day = ?, recurrence = ?, event_category = ?, pinned = ?, sync_status = CASE WHEN external_id IS NULL THEN 'local' ELSE 'pending' END, updated_at = ?
     WHERE id = ? AND user_id = ? AND source = 'arcadia' AND editable = 1
   `).bind(next.title, next.description || "", next.kind, next.subject || null, next.location || null,
     next.startAt, next.endAt, next.allDay ? 1 : 0, next.recurrence || null,
-    next.category || categoryForKind(next.kind), new Date().toISOString(), id, userId).run();
+    next.category || categoryForKind(next.kind), next.pinned ? 1 : 0, new Date().toISOString(), id, userId).run();
   return getEvent(env, userId, id);
 }
 
@@ -471,7 +547,7 @@ export function weekRange(value = new Date()) {
 }
 
 function normalizeEvent(row) {
-  return { ...row, allDay: Boolean(row.allDay), editable: Boolean(row.editable), category: row.category || categoryForKind(row.kind), outcome: row.outcome || (row.status === "completed" ? "completed" : "planned") };
+  return { ...row, allDay: Boolean(row.allDay), editable: Boolean(row.editable), pinned: Boolean(row.pinned), category: row.category || categoryForKind(row.kind), outcome: row.outcome || (row.status === "completed" ? "completed" : "planned") };
 }
 function normalizeProposal(row) {
   let operations = [];

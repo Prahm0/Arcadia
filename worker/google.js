@@ -42,7 +42,7 @@ export async function finishGoogleOAuth(env, user, origin, code, state) {
   const stateHash = await sha256Base64Url(state);
   const stored = await env.DB.prepare("SELECT user_id AS userId, code_verifier AS verifier, created_at AS createdAt FROM oauth_states WHERE state_hash = ?")
     .bind(stateHash).first();
-  if (!stored || stored.userId !== user.id || Date.now() - Date.parse(stored.createdAt) > 10 * 60 * 1000) {
+  if (!stored || (user && stored.userId !== user.id) || Date.now() - Date.parse(stored.createdAt) > 10 * 60 * 1000) {
     throw new Error("Google connection expired. Please try again.");
   }
   await env.DB.prepare("DELETE FROM oauth_states WHERE state_hash = ?").bind(stateHash).run();
@@ -66,18 +66,20 @@ export async function finishGoogleOAuth(env, user, origin, code, state) {
     body: JSON.stringify({ summary: "Arcadia", description: "Study blocks planned by Arcadia" })
   });
   const now = new Date().toISOString();
+  const userId = stored.userId;
   await env.DB.batch([
     env.DB.prepare(`
       INSERT INTO google_connections (user_id, encrypted_refresh_token, token_iv, arcadia_calendar_id, connected_at, last_sync_at)
       VALUES (?, ?, ?, ?, ?, NULL)
       ON CONFLICT(user_id) DO UPDATE SET encrypted_refresh_token = excluded.encrypted_refresh_token,
         token_iv = excluded.token_iv, arcadia_calendar_id = excluded.arcadia_calendar_id, connected_at = excluded.connected_at, last_sync_at = NULL
-    `).bind(user.id, encrypted.ciphertext, encrypted.iv, calendar.id, now),
-    env.DB.prepare("DELETE FROM google_calendars WHERE user_id = ?").bind(user.id),
-    env.DB.prepare("DELETE FROM events WHERE user_id = ? AND source = 'google'").bind(user.id)
+    `).bind(userId, encrypted.ciphertext, encrypted.iv, calendar.id, now),
+    env.DB.prepare("DELETE FROM google_calendars WHERE user_id = ?").bind(userId),
+    env.DB.prepare("DELETE FROM events WHERE user_id = ? AND source = 'google'").bind(userId)
   ]);
-  await loadGoogleCalendars(env, user.id, tokens.access_token, calendar.id);
-  await syncGoogleCalendars(env, user.id, tokens.access_token);
+  await loadGoogleCalendars(env, userId, tokens.access_token, calendar.id);
+  await syncGoogleCalendars(env, userId, tokens.access_token);
+  return userId;
 }
 
 export async function getGoogleStatus(env, userId) {

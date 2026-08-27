@@ -16,7 +16,7 @@ export async function rebuildSchedule(env, userId, { from = new Date(), horizonD
 
   await env.DB.prepare(`
     DELETE FROM events WHERE user_id = ? AND source = 'arcadia' AND event_category = 'study'
-      AND task_id IS NOT NULL AND outcome = 'planned' AND start_at >= ?
+      AND task_id IS NOT NULL AND outcome = 'planned' AND pinned = 0 AND start_at >= ?
   `).bind(userId, now.toISOString()).run();
   await materializeCommitments(env, userId, planner.commitments, timezone, startKey, endKey);
 
@@ -26,9 +26,12 @@ export async function rebuildSchedule(env, userId, { from = new Date(), horizonD
     taskId: event.taskId || null
   })).filter((block) => Number.isFinite(block.start) && Number.isFinite(block.end));
   const dailyStudy = new Map();
+  const pinnedByTask = new Map();
   for (const event of busy.filter((item) => item.category === "study" && item.outcome !== "missed")) {
     const key = dateKeyInZone(event.startAt, timezone);
-    dailyStudy.set(key, (dailyStudy.get(key) || 0) + minutesBetween(event.startAt, event.endAt));
+    const duration = minutesBetween(event.startAt, event.endAt);
+    dailyStudy.set(key, (dailyStudy.get(key) || 0) + duration);
+    if (event.pinned && event.taskId && event.outcome === "planned") pinnedByTask.set(event.taskId, (pinnedByTask.get(event.taskId) || 0) + duration);
   }
 
   const tasks = planner.tasks.filter((task) => task.status === "pending" && task.remainingMinutes > 0)
@@ -42,7 +45,7 @@ export async function rebuildSchedule(env, userId, { from = new Date(), horizonD
   const maxDaily = clamp(Number(preferences.maxDailyStudyMinutes) || 180, 60, 360);
 
   for (const task of tasks) {
-    let remaining = Number(task.remainingMinutes);
+    let remaining = Math.max(0, Number(task.remainingMinutes) - (pinnedByTask.get(task.id) || 0));
     let sequence = 1;
     while (remaining > 0) {
       const requested = sessionLength(remaining, preferredSession);
@@ -67,7 +70,7 @@ export async function rebuildSchedule(env, userId, { from = new Date(), horizonD
       const nowIso = new Date().toISOString();
       created.push({
         id, title, subject: task.subject, taskId: task.id, category: "study", kind: "study",
-        startAt, endAt, status: "planned", outcome: "planned", source: "arcadia", editable: true,
+        startAt, endAt, status: "planned", outcome: "planned", source: "arcadia", editable: true, pinned: false,
         sequence
       });
       statements.push(env.DB.prepare(`

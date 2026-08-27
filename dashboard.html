@@ -18,7 +18,7 @@
     <script>
       try {
         const saved = localStorage.getItem('arcadia-theme');
-        document.documentElement.dataset.theme = ['light', 'dark', 'midnight'].includes(saved) ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.dataset.theme = ['light', 'dawn', 'rose', 'ocean', 'sage', 'lavender', 'dusk', 'dark', 'midnight'].includes(saved) ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
       } catch {}
     </script>
     <style>
@@ -56,6 +56,62 @@
         --shadow-low: 0 4px 14px rgba(0, 60, 160, .16), 0 0 0 1px rgba(104, 60, 190, .04);
         --shadow: 0 18px 44px rgba(0, 38, 110, .24), 0 0 24px rgba(80, 40, 160, .08);
         --shadow-high: 0 30px 72px rgba(0, 0, 0, .72), 0 0 32px rgba(53, 140, 255, .12);
+      }
+      :root[data-theme="dawn"] {
+        color-scheme: light; --ink: #3b2f32; --muted: #7f6b6b; --line: #e8d8cc;
+        --canvas: #fbf5ef; --panel: #fffaf6; --panel-soft: #fdf3ec; --control: #fffaf6;
+        --hover: #f7ebe3; --rail: #f4e9df; --divider: #eee0d6; --accent: #c9826d;
+        --accent-dark: #a86150; --accent-soft: #f7e6de; --on-accent: #24242c;
+        --shadow-low: 0 3px 10px rgba(111, 75, 64, .07), 0 1px 2px rgba(111, 75, 64, .05);
+        --shadow: 0 14px 34px rgba(111, 75, 64, .1), 0 3px 8px rgba(111, 75, 64, .05);
+        --shadow-high: 0 28px 70px rgba(83, 55, 49, .18), 0 8px 20px rgba(83, 55, 49, .07);
+      }
+      :root[data-theme="rose"] {
+        color-scheme: light; --ink: #392d33; --muted: #806d75; --line: #ead8de;
+        --canvas: #faf4f6; --panel: #fffafb; --panel-soft: #fcf1f4; --control: #fffafb;
+        --hover: #f7e9ee; --rail: #f3e8ec; --divider: #eee0e5; --accent: #bd8296;
+        --accent-dark: #996276; --accent-soft: #f6e6ec; --on-accent: #24242c;
+        --shadow-low: 0 3px 10px rgba(105, 70, 83, .07), 0 1px 2px rgba(105, 70, 83, .05);
+        --shadow: 0 14px 34px rgba(105, 70, 83, .1), 0 3px 8px rgba(105, 70, 83, .05);
+        --shadow-high: 0 28px 70px rgba(80, 50, 62, .18), 0 8px 20px rgba(80, 50, 62, .07);
+      }
+      :root[data-theme="ocean"] {
+        color-scheme: light; --ink: #29363d; --muted: #667b86; --line: #d3e3eb;
+        --canvas: #f2f7fa; --panel: #fbfdfe; --panel-soft: #edf5f8; --control: #fbfdfe;
+        --hover: #e6f0f5; --rail: #e7f0f5; --divider: #dae8ef; --accent: #6f9fb9;
+        --accent-dark: #4f7e99; --accent-soft: #e2f0f6; --on-accent: #24242c;
+        --shadow-low: 0 3px 10px rgba(55, 88, 106, .07), 0 1px 2px rgba(55, 88, 106, .05);
+        --shadow: 0 14px 34px rgba(55, 88, 106, .1), 0 3px 8px rgba(55, 88, 106, .05);
+        --shadow-high: 0 28px 70px rgba(37, 69, 87, .18), 0 8px 20px rgba(37, 69, 87, .07);
+      }
+      :root[data-theme="sage"] {
+        color-scheme: light; --ink: #30382e; --muted: #6e7b69; --line: #d7e2d1;
+        --canvas: #f4f7f1; --panel: #fbfcf9; --panel-soft: #eff4ec; --control: #fbfcf9;
+        --hover: #e8f0e4; --rail: #e9efe5; --divider: #dfe8da; --accent: #7f9b78;
+        --accent-dark: #5e7a59; --accent-soft: #e7f0e3; --on-accent: #24242c;
+        --shadow-low: 0 3px 10px rgba(64, 85, 58, .07), 0 1px 2px rgba(64, 85, 58, .05);
+        --shadow: 0 14px 34px rgba(64, 85, 58, .1), 0 3px 8px rgba(64, 85, 58, .05);
+        --shadow-high: 0 28px 70px rgba(46, 65, 41, .18), 0 8px 20px rgba(46, 65, 41, .07);
+      }
+      :root[data-theme="lavender"] {
+        color-scheme: light; --ink: #342f3d; --muted: #756d80; --line: #ded7e9;
+        --canvas: #f7f5fa; --panel: #fdfcff; --panel-soft: #f2eff7; --control: #fdfcff;
+        --hover: #ece8f3; --rail: #ece8f2; --divider: #e5dfed; --accent: #9385b5;
+        --accent-dark: #72639a; --accent-soft: #ebe6f5; --on-accent: #24242c;
+        --shadow-low: 0 3px 10px rgba(72, 61, 94, .07), 0 1px 2px rgba(72, 61, 94, .05);
+        --shadow: 0 14px 34px rgba(72, 61, 94, .1), 0 3px 8px rgba(72, 61, 94, .05);
+        --shadow-high: 0 28px 70px rgba(53, 43, 73, .18), 0 8px 20px rgba(53, 43, 73, .07);
+      }
+      :root[data-theme="dusk"] {
+        color-scheme: dark; --ink: #f4eff7; --muted: #b5aabc; --line: #4b4659;
+        --canvas: #282633; --panel: #322f3e; --panel-soft: #393543; --control: #3b3747;
+        --hover: #423d4f; --rail: #2c2937; --divider: #454051; --accent: #b89acb;
+        --accent-dark: #d0b6df; --accent-soft: #443b51; --on-accent: #2d2733;
+        --blue: #9fc7e7; --blue-soft: #34404d; --green: #8dbba7; --green-soft: #35433f;
+        --amber: #d0ae7d; --amber-soft: #4a4035; --danger: #df919b; --danger-soft: #49383e;
+        --sport: #8dbba7; --school: #9fc7e7; --extra: #c7a7cb; --other: #b2b5c4;
+        --shadow-low: 0 4px 12px rgba(12, 10, 16, .2); --shadow: 0 16px 38px rgba(12, 10, 16, .3);
+        --shadow-high: 0 28px 68px rgba(8, 6, 11, .46);
       }
       * { box-sizing: border-box; }
       html { color-scheme: light; }
@@ -257,22 +313,67 @@
       .legend span { display: inline-flex; align-items: center; gap: 6px; }
       .legend i { width: 8px; height: 8px; border-radius: 3px; background: var(--other); }
       .legend .school { background: var(--school); } .legend .study { background: var(--accent); } .legend .sport { background: var(--sport); } .legend .extracurricular { background: var(--extra); }
-      .week-board { display: grid; grid-template-columns: repeat(7,minmax(130px,1fr)); min-height: 540px; overflow-x: auto; }
-      .week-day { min-width: 130px; padding: 0 10px 16px; border-right: 1px solid var(--divider); }
-      .week-day:last-child { border-right: 0; }
-      .week-day-head { position: sticky; top: 0; z-index: 2; margin: 0 -10px 10px; padding: 14px 10px 12px; border-bottom: 1px solid var(--divider); background: var(--panel); text-align: center; }
-      .week-day-head span { display: block; color: var(--muted); font-size: 9px; font-weight: 730; text-transform: uppercase; }
-      .week-day-head strong { width: 30px; height: 30px; display: grid; place-items: center; margin: 7px auto 0; border-radius: 10px; font-size: 12px; }
-      .week-day.today .week-day-head strong { background: var(--accent); color: var(--on-accent); }
-      .week-event { width: 100%; display: block; margin-bottom: 8px; padding: 10px; border: 1px solid var(--divider); border-left: 4px solid var(--other); border-radius: 10px; background: var(--panel-soft); text-align: left; }
-      button.week-event:hover { background: var(--hover); border-color: var(--accent); }
-      .week-event.study { border-left-color: var(--accent); } .week-event.school { border-left-color: var(--school); }
-      .week-event.sport { border-left-color: var(--sport); } .week-event.extracurricular { border-left-color: var(--extra); }
-      .week-event.completed { opacity: .6; }
-      .week-event time { display: block; margin-bottom: 5px; color: var(--muted); font-size: 8px; }
-      .week-event strong { display: block; font-size: 10px; line-height: 1.35; }
-      .week-event small { display: block; margin-top: 5px; color: var(--muted); font-size: 8px; }
-      .day-empty { padding: 18px 4px; color: var(--muted); font-size: 9px; text-align: center; }
+      .calendar-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+      .calendar-toolbar-left, .calendar-toolbar-right, .calendar-nav { display: flex; align-items: center; gap: 8px; }
+      .calendar-view-switch { display: inline-grid; grid-template-columns: repeat(3,1fr); gap: 3px; padding: 4px; border: 1px solid var(--line); border-radius: 13px; background: var(--panel-soft); }
+      .calendar-view-button { min-width: 68px; height: 34px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-size: 10px; font-weight: 740; }
+      .calendar-view-button[aria-pressed="true"] { background: var(--panel); color: var(--accent-dark); box-shadow: var(--shadow-low); }
+      .calendar-panel { overflow: hidden; }
+      .calendar-filters { display: flex; gap: 7px; padding: 12px 16px; overflow-x: auto; border-bottom: 1px solid var(--divider); scrollbar-width: none; }
+      .calendar-filter { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--muted); font-size: 9px; font-weight: 700; }
+      .calendar-filter::before { width: 8px; height: 8px; border-radius: 3px; background: var(--filter-color,var(--other)); content: ""; }
+      .calendar-filter[aria-pressed="false"] { opacity: .45; filter: grayscale(.8); }
+      .calendar-filter[data-filter="study"] { --filter-color: var(--accent); } .calendar-filter[data-filter="school"] { --filter-color: var(--school); }
+      .calendar-filter[data-filter="sport"] { --filter-color: var(--sport); } .calendar-filter[data-filter="extracurricular"] { --filter-color: var(--extra); }
+      .calendar-filter[data-filter="assessment"] { --filter-color: var(--danger); }
+      .calendar-loading { min-height: 560px; display: grid; place-items: center; color: var(--muted); font-size: 11px; }
+      .time-calendar { --hour-height: 64px; min-width: 760px; }
+      .time-calendar.day-view { min-width: 0; }
+      .calendar-scroll { max-height: min(72vh,900px); overflow: auto; position: relative; overscroll-behavior: contain; }
+      .calendar-day-heads { position: sticky; top: 0; z-index: 12; display: grid; grid-template-columns: 58px repeat(var(--calendar-days),minmax(110px,1fr)); border-bottom: 1px solid var(--divider); background: color-mix(in srgb,var(--panel) 94%,transparent); backdrop-filter: blur(12px); }
+      .calendar-head-spacer { border-right: 1px solid var(--divider); }
+      .calendar-day-head { min-height: 64px; padding: 10px 8px; border-right: 1px solid var(--divider); text-align: center; }
+      .calendar-day-head span { display: block; color: var(--muted); font-size: 8px; font-weight: 760; letter-spacing: .06em; text-transform: uppercase; }
+      .calendar-day-head strong { width: 31px; height: 31px; display: grid; place-items: center; margin: 5px auto 0; border-radius: 50%; font-size: 12px; }
+      .calendar-day-head.today strong { background: var(--accent); color: var(--on-accent); }
+      .all-day-row { display: grid; grid-template-columns: 58px repeat(var(--calendar-days),minmax(110px,1fr)); min-height: 43px; border-bottom: 1px solid var(--divider); }
+      .all-day-label { padding: 12px 8px; border-right: 1px solid var(--divider); color: var(--muted); font-size: 8px; text-align: right; }
+      .all-day-cell { min-width: 0; padding: 5px; border-right: 1px solid var(--divider); }
+      .calendar-body { display: grid; grid-template-columns: 58px minmax(0,1fr); }
+      .time-labels { position: relative; height: calc(24 * var(--hour-height)); border-right: 1px solid var(--divider); }
+      .time-label { position: absolute; right: 8px; transform: translateY(-50%); color: var(--muted); font-size: 8px; font-variant-numeric: tabular-nums; }
+      .calendar-columns { position: relative; display: grid; grid-template-columns: repeat(var(--calendar-days),minmax(110px,1fr)); height: calc(24 * var(--hour-height)); }
+      .calendar-column { position: relative; border-right: 1px solid var(--divider); background: repeating-linear-gradient(to bottom,transparent 0,transparent calc(var(--hour-height) / 2 - 1px),color-mix(in srgb,var(--divider) 48%,transparent) calc(var(--hour-height) / 2),transparent calc(var(--hour-height) / 2 + 1px),transparent calc(var(--hour-height) - 1px),var(--divider) var(--hour-height)); }
+      .calendar-column.today { background-color: color-mix(in srgb,var(--accent-soft) 25%,transparent); }
+      .calendar-event { --event-color: var(--other); position: absolute; z-index: 3; left: calc(var(--event-left,0) * 1% + 3px); width: calc(var(--event-width,100) * 1% - 6px); min-height: 22px; overflow: hidden; padding: 6px 7px; border: 0; border-left: 3px solid var(--event-color); border-radius: 7px; background: color-mix(in srgb,var(--event-color) 15%,var(--panel)); color: var(--ink); box-shadow: inset 0 0 0 1px color-mix(in srgb,var(--event-color) 28%,transparent); text-align: left; cursor: pointer; touch-action: none; }
+      .calendar-event:hover, .calendar-event:focus-visible { z-index: 7; outline: 2px solid color-mix(in srgb,var(--event-color) 65%,transparent); outline-offset: 1px; }
+      .calendar-event.study { --event-color: var(--accent); } .calendar-event.school { --event-color: var(--school); }
+      .calendar-event.sport { --event-color: var(--sport); } .calendar-event.extracurricular { --event-color: var(--extra); }
+      .calendar-event.completed { opacity: .58; } .calendar-event.readonly { cursor: default; touch-action: auto; }
+      .calendar-event-time, .calendar-event-title, .calendar-event-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .calendar-event-time { color: var(--muted); font-size: 7px; } .calendar-event-title { margin-top: 2px; font-size: 9px; font-weight: 760; }
+      .calendar-event-meta { margin-top: 2px; color: var(--muted); font-size: 7px; }
+      .event-pin { margin-left: 4px; color: var(--accent-dark); }
+      .event-resize { position: absolute; inset: auto 4px 1px; height: 6px; cursor: ns-resize; border-bottom: 2px solid color-mix(in srgb,var(--event-color) 65%,transparent); }
+      .now-line { position: absolute; z-index: 9; left: 0; right: 0; height: 1px; background: var(--danger); pointer-events: none; }
+      .now-line::before { position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); content: ""; }
+      .all-day-event, .assessment-chip { width: 100%; display: block; margin-bottom: 3px; padding: 4px 6px; overflow: hidden; border: 0; border-radius: 5px; background: var(--accent-soft); color: var(--ink); font-size: 8px; font-weight: 700; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+      .assessment-chip { border-left: 3px solid var(--danger); background: var(--danger-soft); }
+      .month-calendar { display: grid; grid-template-columns: repeat(7,minmax(110px,1fr)); min-width: 780px; }
+      .month-weekday { padding: 11px; border-bottom: 1px solid var(--divider); color: var(--muted); font-size: 8px; font-weight: 760; text-align: center; text-transform: uppercase; }
+      .month-day { min-height: 124px; padding: 8px; border-right: 1px solid var(--divider); border-bottom: 1px solid var(--divider); background: var(--panel); color: var(--ink); text-align: left; }
+      button.month-day { width: 100%; }
+      .month-day.outside { background: var(--panel-soft); color: var(--muted); }
+      .month-day-number { width: 27px; height: 27px; display: grid; place-items: center; margin-bottom: 5px; border-radius: 50%; font-size: 10px; font-weight: 720; }
+      .month-day.today .month-day-number { background: var(--accent); color: var(--on-accent); }
+      .month-event { display: block; margin-top: 3px; padding: 3px 5px; overflow: hidden; border-radius: 4px; background: var(--accent-soft); font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+      .month-event.assessment { border-left: 3px solid var(--danger); background: var(--danger-soft); }
+      .month-more { display: block; margin-top: 5px; color: var(--muted); font-size: 7px; }
+      .calendar-dragging { opacity: .78; box-shadow: var(--shadow-high); }
+      .event-dialog-note { margin: 0 0 15px; padding: 11px 12px; border-radius: 10px; background: var(--panel-soft); color: var(--muted); font-size: 9px; line-height: 1.5; }
+      .event-dialog-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+      .all-day-toggle { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 9px; }
+      .all-day-toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
 
       .mentor-layout { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 18px; align-items: start; }
       .chat-panel { display: flex; flex-direction: column; min-height: 650px; }
@@ -341,7 +442,7 @@
         .analytics-grid { grid-template-columns: repeat(3,1fr); }
         .analytics-layout { grid-template-columns: 1fr; }
         .tracker-layout { grid-template-columns: 1fr; }
-        .week-board { grid-template-columns: repeat(7, 150px); }
+        .time-calendar:not(.day-view), .month-calendar { min-width: 790px; }
         .input-row, .task-input-row, .commitment-input-row { grid-template-columns: repeat(3,minmax(120px,1fr)); }
         .remove-row { align-self: end; }
       }
@@ -365,6 +466,9 @@
         .timeline-actions, .timeline-badge { grid-column: 3; justify-self: start; }
         .panel { border-radius: 19px; }
         .schedule-toolbar { align-items: flex-start; flex-direction: column; }
+        .calendar-toolbar-left, .calendar-toolbar-right { width: 100%; justify-content: space-between; }
+        .calendar-toolbar-right .button { flex: 1; }
+        .calendar-scroll { max-height: calc(100vh - 260px); min-height: 520px; }
         .analytics-toolbar { align-items: stretch; flex-direction: column; }
         .analytics-toolbar .button-row { justify-content: space-between; }
         .period-switcher { width: 100%; }
@@ -388,6 +492,7 @@
         .tracker-mode-button { min-width: 0; padding: 0 7px; }
         .tracker-main { padding: 18px; }
         .tracker-stats { margin: 24px -18px -18px; }
+        .calendar-view-button { min-width: 58px; padding: 0 8px; }
         .tracker-history-row { grid-template-columns: minmax(0,1fr) auto; }
         .tracker-history-time { grid-column: 1 / -1; }
       }
@@ -464,13 +569,13 @@
         </section>
 
         <section data-view-panel="schedule" aria-labelledby="page-title" hidden>
-          <div class="schedule-toolbar">
-            <div><span class="week-label" id="week-label">This week</span><p class="panel-subtitle">Fixed events stay put. Flexible study blocks adapt around them.</p></div>
-            <div class="button-row"><button class="icon-button" id="previous-week" type="button" aria-label="Previous week"><i data-lucide="chevron-left" aria-hidden="true"></i></button><button class="button" id="current-week" type="button">This week</button><button class="icon-button" id="next-week" type="button" aria-label="Next week"><i data-lucide="chevron-right" aria-hidden="true"></i></button></div>
+          <div class="calendar-toolbar">
+            <div class="calendar-toolbar-left"><div class="calendar-nav"><button class="icon-button" id="previous-week" type="button" aria-label="Previous period"><i data-lucide="chevron-left" aria-hidden="true"></i></button><button class="button" id="current-week" type="button">Today</button><button class="icon-button" id="next-week" type="button" aria-label="Next period"><i data-lucide="chevron-right" aria-hidden="true"></i></button></div><div><span class="week-label" id="week-label">This week</span><p class="panel-subtitle">Commitments, flexible study, and assessment dates in one place.</p></div></div>
+            <div class="calendar-toolbar-right"><div class="calendar-view-switch" role="group" aria-label="Calendar view"><button class="calendar-view-button" type="button" data-calendar-view="day" aria-pressed="false">Day</button><button class="calendar-view-button" type="button" data-calendar-view="week" aria-pressed="true">Week</button><button class="calendar-view-button" type="button" data-calendar-view="month" aria-pressed="false">Month</button></div><button class="button" id="calendar-add-task" type="button">Add task</button><button class="button primary" id="calendar-add-event" type="button">New event</button></div>
           </div>
-          <article class="panel">
-            <div class="legend" aria-label="Schedule legend"><span><i class="school"></i>School</span><span><i class="study"></i>Study</span><span><i class="sport"></i>Sport</span><span><i class="extracurricular"></i>Extracurricular</span><span><i></i>Other</span></div>
-            <div class="week-board" id="week-board" aria-live="polite"><div class="empty-state">Loading the shared weekly schedule…</div></div>
+          <article class="panel calendar-panel">
+            <div class="calendar-filters" id="calendar-filters" aria-label="Calendar filters"><button class="calendar-filter" type="button" data-filter="school" aria-pressed="true">School</button><button class="calendar-filter" type="button" data-filter="study" aria-pressed="true">Study</button><button class="calendar-filter" type="button" data-filter="sport" aria-pressed="true">Sport</button><button class="calendar-filter" type="button" data-filter="extracurricular" aria-pressed="true">Activities</button><button class="calendar-filter" type="button" data-filter="other" aria-pressed="true">Other</button><button class="calendar-filter" type="button" data-filter="assessment" aria-pressed="true">Assessments</button></div>
+            <div class="calendar-scroll" id="week-board" aria-live="polite"><div class="calendar-loading">Loading your calendar...</div></div>
           </article>
         </section>
 
@@ -494,7 +599,7 @@
               <article class="panel"><header class="panel-head"><div><h2 class="panel-title">Session setup</h2><p class="panel-subtitle">Choose a proven rhythm or make your own.</p></div></header><div class="tracker-settings"><div class="field"><label for="tracker-preset">Study combination</label><select id="tracker-preset"><option value="pomodoro">Pomodoro · 25 / 5 × 4</option><option value="deep">Deep work · 50 / 10 × 3</option><option value="long">Long focus · 90 / 20 × 2</option><option value="sprint">Quick sprint · 15 / 3 × 4</option><option value="exam">Exam practice · 45 / 15 × 2</option><option value="custom">Custom combination</option></select></div><div class="tracker-settings-grid"><div class="field"><label for="tracker-focus-minutes">Focus min</label><input id="tracker-focus-minutes" type="number" min="1" max="240" value="25" /></div><div class="field"><label for="tracker-rest-minutes">Rest min</label><input id="tracker-rest-minutes" type="number" min="1" max="60" value="5" /></div><div class="field"><label for="tracker-cycles">Cycles</label><input id="tracker-cycles" type="number" min="1" max="12" value="4" /></div></div><label class="tracker-check"><input id="tracker-auto-rest" type="checkbox" /> Automatically start the next phase</label></div></article>
               <article class="panel"><header class="panel-head"><div><h2 class="panel-title">Focus tools</h2><p class="panel-subtitle">Small helpers for staying honest.</p></div></header><div><div class="tracker-tool-row"><div class="tracker-tool-copy"><strong>Distraction counter</strong><span>Notice an interruption without losing your place.</span></div><div class="button-row"><button class="button small" id="tracker-distraction" type="button">+ Add</button><span class="tracker-counter" id="tracker-distraction-count">0</span></div></div><div class="tracker-tool-row"><div class="tracker-tool-copy"><strong>Clear current count</strong><span>Start fresh without changing session history.</span></div><button class="button small" id="tracker-clear-distractions" type="button">Clear</button></div></div></article>
             </div>
-            <article class="panel tracker-history"><header class="panel-head"><div><h2 class="panel-title">Recent sessions</h2><p class="panel-subtitle">Saved on this device for this Arcadia account.</p></div><button class="button small" id="tracker-clear-history" type="button">Clear history</button></header><div class="tracker-history-list" id="tracker-history"><div class="empty-state"><strong>No sessions yet</strong>Finish or complete a timer to start your record.</div></div></article>
+            <article class="panel tracker-history"><header class="panel-head"><div><h2 class="panel-title">Recent sessions</h2><p class="panel-subtitle">Saved securely to your Arcadia account.</p></div><button class="button small" id="tracker-clear-history" type="button">Clear history</button></header><div class="tracker-history-list" id="tracker-history"><div class="empty-state"><strong>No sessions yet</strong>Finish or complete a timer to start your record.</div></div></article>
           </div>
         </section>
 
@@ -585,9 +690,27 @@
       <form id="task-form"><div class="form-body"><div class="form-grid"><div class="field wide"><label for="task-title">Title</label><input id="task-title" required maxlength="120" placeholder="Chemistry homework" /></div><div class="field"><label for="task-subject">Subject</label><select id="task-subject" required></select></div><div class="field"><label for="task-type">Type</label><select id="task-type"><option value="homework">Homework</option><option value="assignment">Assignment</option><option value="exam">Exam / test</option><option value="revision">Revision</option><option value="project">Project</option><option value="other">Other</option></select></div><div class="field"><label for="task-due">Due</label><input id="task-due" type="datetime-local" required /></div><div class="field"><label for="task-duration">Estimated minutes</label><input id="task-duration" type="number" min="15" max="1440" step="15" value="60" required /></div><div class="field"><label for="task-priority">Priority</label><select id="task-priority"><option value="1">Low</option><option value="2" selected>Normal</option><option value="3">High</option></select></div><div class="field wide"><label for="task-notes">Notes</label><textarea id="task-notes" maxlength="1000"></textarea></div></div><p class="form-error" id="task-error" aria-live="polite"></p></div><div class="modal-actions"><span></span><button class="button primary" id="task-save" type="submit">Add and replan</button></div></form>
     </dialog>
 
+    <dialog id="event-dialog" aria-labelledby="event-dialog-title">
+      <div class="modal-head"><div><p class="eyebrow" id="event-dialog-eyebrow">Calendar event</p><h2 id="event-dialog-title">New event</h2></div><button class="close-button" type="button" data-close="event-dialog" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button></div>
+      <form id="event-form"><div class="form-body"><p class="event-dialog-note" id="event-dialog-note" hidden></p><div class="form-grid"><div class="field wide"><label for="event-title">Title</label><input id="event-title" required maxlength="120" /></div><div class="field"><label for="event-category">Category</label><select id="event-category"><option value="study">Study</option><option value="school">School</option><option value="sport">Sport</option><option value="extracurricular">Extracurricular</option><option value="other">Other</option></select></div><div class="field"><label for="event-subject">Subject</label><select id="event-subject"><option value="">General</option></select></div><div class="field wide"><label class="all-day-toggle"><input id="event-all-day" type="checkbox" /> All-day event</label></div><div class="field"><label for="event-start-date">Start date</label><input id="event-start-date" type="date" required /></div><div class="field"><label for="event-start-time">Start time</label><input id="event-start-time" type="time" step="900" required /></div><div class="field"><label for="event-end-date">End date</label><input id="event-end-date" type="date" required /></div><div class="field"><label for="event-end-time">End time</label><input id="event-end-time" type="time" step="900" required /></div><div class="field wide"><label for="event-location">Location</label><input id="event-location" maxlength="160" /></div><div class="field wide"><label for="event-description">Notes</label><textarea id="event-description" maxlength="1000"></textarea></div></div><p class="form-error" id="event-error" aria-live="polite"></p></div><div class="modal-actions"><div class="event-dialog-actions"><button class="button danger small" id="event-delete" type="button" hidden>Delete</button><button class="button small" id="event-outcome-complete" type="button" hidden>Complete</button><button class="button small" id="event-outcome-missed" type="button" hidden>Missed</button><button class="button small" id="event-pin-toggle" type="button" hidden>Pin</button></div><button class="button primary" id="event-save" type="submit">Save event</button></div></form>
+    </dialog>
+
+    <dialog id="assessment-dialog" aria-labelledby="assessment-title">
+      <div class="modal-head"><div><p class="eyebrow">Assessment</p><h2 id="assessment-title">Assessment details</h2></div><button class="close-button" type="button" data-close="assessment-dialog" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button></div><div class="modal-body" id="assessment-detail"></div><div class="modal-actions"><span></span><button class="button" type="button" data-close="assessment-dialog">Close</button></div>
+    </dialog>
+
     <dialog id="settings-dialog" aria-labelledby="settings-title">
       <div class="modal-head"><h2 id="settings-title">Settings</h2><button class="close-button" type="button" data-close="settings-dialog" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button></div>
-      <div class="modal-body"><div class="connection-card"><strong>Appearance</strong><p>Choose the colour style Arcadia uses on this device.</p><div class="field"><label for="theme-select">Style</label><select id="theme-select"><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option></select></div></div><div class="connection-card"><strong>Your life setup</strong><p>Update subjects, deadlines, commitments, sleep, and study capacity. Arcadia will rebuild future flexible blocks from the new information.</p><button class="button" id="edit-life-button" type="button">Edit life setup</button></div><div class="connection-card"><strong>Google Calendar</strong><p id="google-detail">Connect Google Calendar so imported events become fixed commitments. Arcadia only writes study blocks to its own calendar.</p><div class="button-row"><button class="button primary" id="google-connect" type="button">Connect Google</button><button class="button danger" id="google-disconnect" type="button" hidden>Disconnect</button></div></div><div class="connection-card"><strong id="account-name">Arcadia account</strong><p id="account-email">Signed in</p><button class="button danger" id="sign-out-button" type="button">Sign out</button></div></div>
+      <div class="modal-body">
+        <div class="connection-card"><strong>Appearance</strong><p>Choose the colour style Arcadia saves to your account.</p><div class="field"><label for="theme-select">Style</label><select id="theme-select"><option value="light">Light</option><option value="dawn">Dawn</option><option value="rose">Rose</option><option value="ocean">Ocean</option><option value="sage">Sage</option><option value="lavender">Lavender</option><option value="dusk">Dusk</option><option value="dark">Dark</option><option value="midnight">Midnight</option></select></div></div>
+        <div class="connection-card"><strong>Your profile</strong><p id="account-email">Signed in</p><form id="profile-form"><div class="field"><label for="account-display-name">Display name</label><input id="account-display-name" maxlength="80" autocomplete="name" required /></div><div class="button-row"><button class="button primary" type="submit">Save profile</button></div><p class="form-error" id="profile-error" aria-live="polite"></p></form></div>
+        <div class="connection-card"><strong>Your life setup</strong><p>Update subjects, deadlines, commitments, sleep, and study capacity. Arcadia will rebuild future flexible blocks from the new information.</p><button class="button" id="edit-life-button" type="button">Edit life setup</button></div>
+        <div class="connection-card"><strong>Google Calendar</strong><p id="google-detail">Connect Google Calendar so imported events become fixed commitments. Arcadia only writes study blocks to its own calendar.</p><div class="button-row"><button class="button primary" id="google-connect" type="button">Connect Google</button><button class="button danger" id="google-disconnect" type="button" hidden>Disconnect</button></div></div>
+        <div class="connection-card"><strong>Change email</strong><p>Your current email remains active until the new address is verified.</p><form id="email-form"><div class="form-grid"><div class="field"><label for="new-email">New email</label><input id="new-email" type="email" maxlength="254" autocomplete="email" required /></div><div class="field"><label for="email-password">Current password</label><input id="email-password" type="password" maxlength="128" autocomplete="current-password" required /></div></div><button class="button" type="submit">Send verification</button><p class="form-error" id="email-error" aria-live="polite"></p></form></div>
+        <div class="connection-card"><strong>Change password</strong><p>Changing your password signs out every other device.</p><form id="password-form"><div class="form-grid"><div class="field"><label for="current-password">Current password</label><input id="current-password" type="password" maxlength="128" autocomplete="current-password" required /></div><div class="field"><label for="new-password">New password</label><input id="new-password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required /></div></div><button class="button" type="submit">Update password</button><p class="form-error" id="password-error" aria-live="polite"></p></form></div>
+        <div class="connection-card"><strong id="account-name">Arcadia account</strong><p>Manage signed-in devices or end this session.</p><div class="button-row"><button class="button" id="sign-out-button" type="button">Sign out</button><button class="button" id="sign-out-all-button" type="button">Sign out everywhere</button></div></div>
+        <div class="connection-card"><strong>Delete account</strong><p>Permanently removes your Arcadia profile and all locally stored planner data. Google Calendar copies must be removed separately.</p><form id="delete-account-form"><div class="form-grid"><div class="field"><label for="delete-password">Current password</label><input id="delete-password" type="password" maxlength="128" autocomplete="current-password" required /></div><div class="field"><label for="delete-confirmation">Type DELETE</label><input id="delete-confirmation" maxlength="6" autocomplete="off" required /></div></div><button class="button danger" type="submit">Delete account permanently</button><p class="form-error" id="delete-error" aria-live="polite"></p></form></div>
+      </div>
     </dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script defer src="./lucide-icons.js"></script>

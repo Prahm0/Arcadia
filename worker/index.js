@@ -1,5 +1,7 @@
 import dashboardHtml from "../dashboard.html?raw";
 import dashboardScript from "../dashboard.js?raw";
+import authHtml from "../auth.html?raw";
+import authScript from "../auth.js?raw";
 import lucideIconsScript from "../lucide-icons.js?raw";
 import arcadiaLogo from "../arcadia-logo-original.png?inline";
 import arcadiaMark from "../arcadia-mark.png?inline";
@@ -9,8 +11,8 @@ import appleTouchIcon from "../apple-touch-icon.png?inline";
 import socialPreview from "../og-v3.png?inline";
 import {
   completeEvent, createEvent, createTask, deleteEvent, ensureDatabase, getAnalytics, getEvent,
-  getPlannerData, listActivity, listEvents, listMessages, listPendingProposals, markEventOutcome,
-  requireUser, saveOnboarding, updateEvent, upsertProfile, weekRange
+  getPlannerData, listActivity, listEvents, listMessages, listPendingProposals, listStudySessions, markEventOutcome,
+  saveOnboarding, saveStudySessions, clearStudySessions, updateEvent, weekRange
 } from "./db.js";
 import {
   beginGoogleOAuth, disconnectGoogle, finishGoogleOAuth, getGoogleStatus, publishArcadiaEvent,
@@ -18,6 +20,10 @@ import {
 } from "./google.js";
 import { applyProposal, chatStream, declineProposal, mentorAvailable } from "./openai.js";
 import { buildBriefing, dateKeyInZone, focusTasks, rebuildSchedule, zonedDateTime } from "./scheduler.js";
+import {
+  attachSession, authenticateRequest, handleAccountRoute, handleAuthRoute, handleSessionRoute,
+  requireCsrf, verifyEmailChange
+} from "./auth.js";
 
 const htmlHeaders = {
   "cache-control": "private, no-store",
@@ -37,23 +43,41 @@ const imageAssets = new Map([
 export default {
   async fetch(request, env, context) {
     const url = new URL(request.url);
-    if (url.pathname === "/") {
-      if (!requireUser(request)) return Response.redirect(`${url.origin}/signin-with-chatgpt?return_to=%2F`, 302);
-      return new Response(dashboardHtml, { headers: htmlHeaders });
-    }
-    if (url.pathname === "/dashboard") return Response.redirect(`${url.origin}/`, 308);
+    if (url.pathname === "/auth.js") return new Response(authScript, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "private, no-store" } });
     if (url.pathname === "/dashboard.js") return new Response(dashboardScript, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "private, no-store" } });
     if (url.pathname === "/lucide-icons.js") return new Response(lucideIconsScript, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "private, no-store" } });
     const imageAsset = imageAssets.get(url.pathname);
     if (imageAsset) return new Response(decodeDataUrl(imageAsset), { headers: { "cache-control": "public, max-age=31536000, immutable", "content-type": "image/png" } });
-    if (!url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
-
-    const user = requireUser(request);
-    if (!user) return json({ error: "Authentication required." }, 401);
     try {
       await ensureDatabase(env);
-      await upsertProfile(env, user);
-      return await routeApi(request, env, context, url, user);
+      if (url.pathname.startsWith("/api/auth/")) {
+        const publicResponse = await handleAuthRoute(request, env, url);
+        if (publicResponse) return publicResponse;
+      }
+      if (request.method === "GET" && url.pathname === "/api/account/verify-email-change") return verifyEmailChange(request, env, url);
+      if (request.method === "GET" && url.pathname === "/api/google/callback") {
+        if (url.searchParams.get("error")) return Response.redirect(`${url.origin}/?google=denied`, 302);
+        await finishGoogleOAuth(env, null, url.origin, url.searchParams.get("code"), url.searchParams.get("state"));
+        return Response.redirect(`${url.origin}/?google=connected`, 302);
+      }
+
+      const auth = await authenticateRequest(request, env);
+      if (["/login", "/register", "/forgot-password", "/reset-password", "/verify-email"].includes(url.pathname)) {
+        return auth ? attachSession(Response.redirect(`${url.origin}/`, 302), auth) : new Response(authHtml, { headers: htmlHeaders });
+      }
+      if (url.pathname === "/dashboard") return Response.redirect(`${url.origin}/`, 308);
+      if (url.pathname === "/") return auth
+        ? attachSession(new Response(dashboardHtml, { headers: htmlHeaders }), auth)
+        : Response.redirect(`${url.origin}/login`, 302);
+      if (!url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
+      if (!auth) return json({ error: "Authentication required.", loginUrl: "/login" }, 401);
+
+      const sessionResponse = await handleSessionRoute(request, env, url, auth);
+      if (sessionResponse) return sessionResponse;
+      const accountResponse = await handleAccountRoute(request, env, url, auth);
+      if (accountResponse) return attachSession(accountResponse, auth);
+      requireCsrf(request, auth);
+      return attachSession(await routeApi(request, env, context, url, auth.user, auth.csrfToken), auth);
     } catch (error) {
       console.error("Arcadia request failed", { path: url.pathname, message: error?.message });
       const status = error.status || 500;
@@ -62,7 +86,7 @@ export default {
   }
 };
 
-async function routeApi(request, env, context, url, authenticatedUser) {
+async function routeApi(request, env, context, url, authenticatedUser, csrfToken) {
   const method = request.method.toUpperCase();
   const path = url.pathname;
 
@@ -93,8 +117,15 @@ async function routeApi(request, env, context, url, authenticatedUser) {
       focusTasks: focusTasks(planner.tasks),
       briefing: planner.profile?.onboardingComplete ? buildBriefing({ ...planner, events, now: new Date() }) : null,
       google,
+      studySessions: await listStudySessions(env, authenticatedUser.id), csrfToken,
       assistant: { configured: mentorAvailable(env), providerConfigured: Boolean(env.OPENAI_API_KEY), messages, proposals }
     });
+  }
+
+  if (method === "GET" && path === "/api/calendar") {
+    const range = validateCalendarRange(url.searchParams.get("start"), url.searchParams.get("end"));
+    const events = await listEvents(env, authenticatedUser.id, range.start, range.end);
+    return json({ range, events });
   }
 
   if (method === "POST" && path === "/api/onboarding") {
@@ -127,6 +158,17 @@ async function routeApi(request, env, context, url, authenticatedUser) {
     const range = analyticsRange(url.searchParams.get("date") || new Date(), period, timezone);
     const analytics = await getAnalytics(env, authenticatedUser.id, range.start, range.end, range.days);
     return json({ period, range: { start: range.start, end: range.end }, analytics });
+  }
+
+  if (method === "GET" && path === "/api/study-sessions") return json({ sessions: await listStudySessions(env, authenticatedUser.id) });
+  if (method === "POST" && path === "/api/study-sessions") {
+    const body = await readJson(request); const raw = Array.isArray(body.sessions) ? body.sessions : [body];
+    if (!raw.length || raw.length > 50) throw badRequest("Add between 1 and 50 study sessions at a time.");
+    const sessions = await saveStudySessions(env, authenticatedUser.id, raw.map(validateStudySession));
+    return json({ sessions }, 201);
+  }
+  if (method === "DELETE" && path === "/api/study-sessions") {
+    await clearStudySessions(env, authenticatedUser.id); return json({ ok: true });
   }
 
   if (path === "/api/events" && method === "POST") {
@@ -177,11 +219,6 @@ async function routeApi(request, env, context, url, authenticatedUser) {
   if (method === "GET" && path === "/api/google/connect") {
     return Response.redirect(await beginGoogleOAuth(env, authenticatedUser, url.origin), 302);
   }
-  if (method === "GET" && path === "/api/google/callback") {
-    if (url.searchParams.get("error")) return Response.redirect(`${url.origin}/?google=denied`, 302);
-    await finishGoogleOAuth(env, authenticatedUser, url.origin, url.searchParams.get("code"), url.searchParams.get("state"));
-    return Response.redirect(`${url.origin}/?google=connected`, 302);
-  }
   if (method === "POST" && path === "/api/google/sync") return json({ ok: true, lastSyncAt: await syncGoogleCalendars(env, authenticatedUser.id) });
   if (method === "DELETE" && path === "/api/google/connection") {
     await disconnectGoogle(env, authenticatedUser.id);
@@ -212,7 +249,7 @@ async function updateEventHandler(env, userId, id, body) {
   const existing = await getEvent(env, userId, id);
   if (!existing) return json({ error: "Event not found." }, 404);
   if (!existing.editable || existing.source !== "arcadia") return json({ error: "Fixed and imported events are read-only here. Update them in Life setup or their source calendar." }, 403);
-  const input = validateEvent({ ...existing, ...body });
+  const input = { ...validateEvent({ ...existing, ...body }), pinned: body.pinned === undefined ? existing.pinned : Boolean(body.pinned) };
   const conflicts = await findConflicts(env, userId, input, id);
   if (conflicts.length) return json({ error: "This time overlaps another event. Choose a free time instead.", conflicts }, 409);
   let event = await updateEvent(env, userId, id, input);
@@ -309,6 +346,22 @@ function validateEvent(body) {
   if (recurrence && !/^RRULE:/i.test(recurrence)) throw badRequest("Recurrence must use an RRULE value.");
   return { title, kind, category, startAt: start.toISOString(), endAt: end.toISOString(), allDay: Boolean(body.allDay), recurrence,
     description: text(body.description, 1000), subject: text(body.subject, 80) || null, location: text(body.location, 160) || null };
+}
+
+function validateCalendarRange(startValue, endValue) {
+  const start = new Date(startValue || ""); const end = new Date(endValue || "");
+  if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf())) throw badRequest("Choose a valid calendar date range.");
+  if (end <= start) throw badRequest("The calendar range end must be after its start.");
+  if (end - start > 62 * DAY_MS) throw badRequest("Calendar ranges cannot be longer than 62 days.");
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function validateStudySession(body) {
+  const seconds = Math.round(Number(body.seconds)); const ended = new Date(body.endedAt);
+  if (!Number.isInteger(seconds) || seconds < 1 || seconds > 24 * 60 * 60) throw badRequest("Study session duration must be between one second and 24 hours.");
+  if (Number.isNaN(ended.valueOf()) || ended.getTime() > Date.now() + 5 * 60 * 1000) throw badRequest("Choose a valid study session end time.");
+  return { id: text(body.id, 120) || crypto.randomUUID(), type: text(body.type, 20), seconds,
+    subject: text(body.subject, 80) || "General", goal: text(body.goal, 120), distractions: clampInt(body.distractions, 0, 999, 0), endedAt: ended.toISOString() };
 }
 
 export function analyticsRange(value, period = "week", timezone = "Australia/Sydney") {
