@@ -27,7 +27,11 @@ const state = {
   csrfToken: null,
   loading: false,
   saving: false,
-  subjectContextTimers: new Map()
+  companionReaction: null,
+  companionReactionTimer: null,
+  subjectContextTimers: new Map(),
+  arcadContextOpen: false,
+  arcadContextUserId: null
 };
 
 const elements = {
@@ -54,6 +58,10 @@ const elements = {
   messages: document.querySelector('#messages'), proposals: document.querySelector('#proposals'),
   mentorStatus: document.querySelector('#mentor-status'), mentorContext: document.querySelector('#mentor-context'),
   composer: document.querySelector('#composer'), chatInput: document.querySelector('#chat-input'), send: document.querySelector('#send-button'),
+  companionDock: document.querySelector('#companion-dock'), companionDockOrb: document.querySelector('#companion-dock-orb'),
+  companionDialog: document.querySelector('#companion-dialog'), companionForm: document.querySelector('#companion-form'), companionError: document.querySelector('#companion-error'), companionName: document.querySelector('#companion-name'), companionFormSelect: document.querySelector('#companion-form-select'), companionPalette: document.querySelector('#companion-palette'), companionAccessory: document.querySelector('#companion-accessory'), companionPreviewOrb: document.querySelector('#companion-preview-orb'),
+  arcadLayout: document.querySelector('#arcad-layout'), arcadContext: document.querySelector('#arcad-context'),
+  arcadChatTab: document.querySelector('#arcad-chat-tab'), arcadContextTab: document.querySelector('#arcad-context-tab'), arcadContextClose: document.querySelector('#arcad-context-close'),
   arcadSky: document.querySelector('#arcad-sky'), arcadStars: document.querySelector('#arcad-stars'), arcadConstellations: document.querySelector('#arcad-constellations'),
   onboardingDialog: document.querySelector('#onboarding-dialog'), onboardingForm: document.querySelector('#onboarding-form'),
   onboardingClose: document.querySelector('#onboarding-close'), onboardingError: document.querySelector('#onboarding-error'),
@@ -88,12 +96,17 @@ function bindControls() {
   elements.viewButtons.forEach((button) => button.addEventListener('click', () => { location.hash = button.dataset.view; }));
   window.addEventListener('hashchange', () => activateView(viewFromHash()));
   let arcadResizeTimer;
-  window.addEventListener('resize', () => { clearTimeout(arcadResizeTimer); arcadResizeTimer = setTimeout(createArcadSky, 160); });
+  window.addEventListener('resize', () => { clearTimeout(arcadResizeTimer); arcadResizeTimer = setTimeout(createArcadSky, 160); clampCompanionPosition(); });
   elements.avatar.addEventListener('click', (event) => { event.stopPropagation(); toggleAccountMenu(); });
+  document.querySelector('#account-companion-button').addEventListener('click', () => { closeAccountMenu(); openCompanionStudio(); });
   document.querySelector('#account-settings-button').addEventListener('click', () => { closeAccountMenu(); elements.settingsDialog.showModal(); });
   document.querySelector('#account-sign-out-button').addEventListener('click', () => signOut(false));
   document.addEventListener('click', (event) => { if (!event.target.closest('.avatar-wrap')) closeAccountMenu(); });
-  document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !elements.accountMenu.hidden) { closeAccountMenu(); elements.avatar.focus(); } });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!elements.accountMenu.hidden) { closeAccountMenu(); elements.avatar.focus(); return; }
+    if (state.arcadContextOpen && state.activeView === 'arcad') { setArcadContextOpen(false); elements.arcadContextTab.focus(); }
+  });
   document.querySelector('#life-setup-button').addEventListener('click', openLifeSetup);
   document.querySelector('#edit-life-button').addEventListener('click', () => { elements.settingsDialog.close(); openLifeSetup(); });
   document.querySelector('#add-task-button').addEventListener('click', openTaskDialog);
@@ -136,6 +149,13 @@ function bindControls() {
   document.querySelector('#event-outcome-complete').addEventListener('click', () => saveEventOutcome('completed'));
   document.querySelector('#event-outcome-missed').addEventListener('click', () => saveEventOutcome('missed'));
   elements.composer.addEventListener('submit', sendChat);
+  elements.companionDock.addEventListener('pointerdown', beginCompanionDrag);
+  applyCompanionPosition();
+  elements.companionForm.addEventListener('submit', saveCompanion);
+  [elements.companionName, elements.companionFormSelect, elements.companionPalette, elements.companionAccessory].forEach((input) => input.addEventListener('input', previewCompanion));
+  elements.arcadChatTab.addEventListener('click', () => setArcadContextOpen(false));
+  elements.arcadContextTab.addEventListener('click', () => setArcadContextOpen(true));
+  elements.arcadContextClose.addEventListener('click', () => { setArcadContextOpen(false); elements.arcadContextTab.focus(); });
   elements.mentorContext.addEventListener('input', (event) => { if (event.target.matches('.subject-context-note')) queueSubjectContextSave(event.target.closest('.subject-context-card')); });
   elements.mentorContext.addEventListener('focusout', (event) => { if (event.target.matches('.subject-context-note')) saveSubjectContextCard(event.target.closest('.subject-context-card')); });
   elements.mentorContext.addEventListener('change', (event) => {
@@ -185,6 +205,31 @@ function activateView(view) {
   if (state.activeView === 'analytics') loadAnalytics();
 }
 
+function initializeArcadPreferences(userId) {
+  if (!userId || state.arcadContextUserId === userId) return;
+  state.arcadContextUserId = userId;
+  try {
+    const saved = JSON.parse(localStorage.getItem(`arcadia-arcad:${userId}`) || '{}');
+    state.arcadContextOpen = saved.contextOpen === true;
+  } catch { state.arcadContextOpen = false; }
+  updateArcadContextUI();
+}
+
+function setArcadContextOpen(open) {
+  state.arcadContextOpen = Boolean(open);
+  updateArcadContextUI();
+  if (!state.arcadContextUserId) return;
+  try { localStorage.setItem(`arcadia-arcad:${state.arcadContextUserId}`, JSON.stringify({ contextOpen: state.arcadContextOpen })); } catch {}
+}
+
+function updateArcadContextUI() {
+  const open = state.arcadContextOpen;
+  elements.arcadLayout.classList.toggle('context-open', open);
+  elements.arcadContext.setAttribute('aria-hidden', String(!open));
+  elements.arcadChatTab.setAttribute('aria-pressed', String(!open));
+  elements.arcadContextTab.setAttribute('aria-pressed', String(open));
+}
+
 async function loadDashboard() {
   setLoading(true);
   try {
@@ -214,11 +259,107 @@ function renderAll() {
   document.querySelector('#account-email').textContent = user.email;
   document.querySelector('#account-display-name').value = user.name;
   updateHeader();
+  renderCompanion();
   renderToday();
   renderSchedule();
   initializeTracker();
   renderMentor();
   renderGoogle();
+}
+
+function companionState() {
+  if (!state.data?.companion) return 'ready';
+  if (state.companionReaction) return state.companionReaction;
+  if (state.tracker.running && state.tracker.mode !== 'rest') return 'focused';
+  return state.data.companion.state || 'ready';
+}
+
+function renderCompanionOrb(orb, profile) {
+  if (!orb || !profile) return;
+  orb.dataset.form = profile.form; orb.dataset.palette = profile.palette;
+  const accessory = orb.querySelector('.companion-accessory');
+  if (accessory) { accessory.className = `companion-accessory ${profile.accessory}`; accessory.textContent = profile.accessory === 'star' ? '✦' : profile.accessory === 'book' ? '▰' : ''; }
+}
+
+function renderCompanion() {
+  const companion = state.data?.companion;
+  if (!companion?.profile) return;
+  const mood = companionState();
+  elements.companionDock.classList.remove('companion-ready', 'companion-focused', 'companion-celebrating', 'companion-recovering');
+  elements.companionDock.classList.add(`companion-${mood}`);
+  renderCompanionOrb(elements.companionDockOrb, companion.profile);
+}
+
+function setCompanionReaction(reaction) {
+  state.companionReaction = reaction; clearTimeout(state.companionReactionTimer); renderCompanion();
+  state.companionReactionTimer = setTimeout(() => { state.companionReaction = null; renderCompanion(); }, reaction === 'celebrating' ? 8000 : 3500);
+}
+
+const COMPANION_POS_KEY = 'arcadia-companion-pos';
+
+function clampCompanionPosition() {
+  const dock = elements.companionDock;
+  if (!dock || !dock.style.left) return;
+  const rect = dock.getBoundingClientRect();
+  const maxLeft = Math.max(8, window.innerWidth - rect.width - 8);
+  const maxTop = Math.max(8, window.innerHeight - rect.height - 8);
+  dock.style.left = `${Math.min(Math.max(8, parseFloat(dock.style.left) || 0), maxLeft)}px`;
+  dock.style.top = `${Math.min(Math.max(8, parseFloat(dock.style.top) || 0), maxTop)}px`;
+}
+
+function applyCompanionPosition() {
+  const dock = elements.companionDock;
+  if (!dock) return;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(COMPANION_POS_KEY) || 'null'); } catch { saved = null; }
+  if (!saved || typeof saved.left !== 'number' || typeof saved.top !== 'number') return;
+  dock.style.right = 'auto'; dock.style.bottom = 'auto';
+  dock.style.left = `${saved.left}px`; dock.style.top = `${saved.top}px`;
+  clampCompanionPosition();
+}
+
+function beginCompanionDrag(pointer) {
+  if (pointer.button !== 0) return;
+  const dock = elements.companionDock;
+  const rect = dock.getBoundingClientRect();
+  const start = { x: pointer.clientX, y: pointer.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+  let didMove = false;
+  dock.setPointerCapture(pointer.pointerId);
+  const move = (current) => {
+    if (current.pointerId !== pointer.pointerId) return;
+    const dx = current.clientX - start.x; const dy = current.clientY - start.y;
+    if (!didMove && Math.hypot(dx, dy) < 6) return;
+    if (!didMove) { didMove = true; dock.classList.add('companion-dragging'); dock.style.right = 'auto'; dock.style.bottom = 'auto'; }
+    const maxLeft = Math.max(8, window.innerWidth - start.width - 8);
+    const maxTop = Math.max(8, window.innerHeight - start.height - 8);
+    dock.style.left = `${Math.min(Math.max(8, start.left + dx), maxLeft)}px`;
+    dock.style.top = `${Math.min(Math.max(8, start.top + dy), maxTop)}px`;
+  };
+  const teardown = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', finish); document.removeEventListener('pointercancel', cancel); dock.classList.remove('companion-dragging'); };
+  const finish = (current) => {
+    if (current.pointerId !== pointer.pointerId) return;
+    teardown();
+    if (!didMove) { setCompanionReaction('celebrating'); return; }
+    try { localStorage.setItem(COMPANION_POS_KEY, JSON.stringify({ left: parseFloat(dock.style.left), top: parseFloat(dock.style.top) })); } catch {}
+  };
+  const cancel = teardown;
+  document.addEventListener('pointermove', move); document.addEventListener('pointerup', finish); document.addEventListener('pointercancel', cancel);
+}
+
+function openCompanionStudio() {
+  const profile = state.data?.companion?.profile; if (!profile) return;
+  elements.companionName.value = profile.name; elements.companionFormSelect.value = profile.form; elements.companionPalette.value = profile.palette; elements.companionAccessory.value = profile.accessory; elements.companionError.textContent = ''; previewCompanion(); elements.companionDialog.showModal(); elements.companionName.focus();
+}
+
+function previewCompanion() { renderCompanionOrb(elements.companionPreviewOrb, { form: elements.companionFormSelect.value, palette: elements.companionPalette.value, accessory: elements.companionAccessory.value }); }
+
+async function saveCompanion(event) {
+  event.preventDefault(); if (state.saving) return; state.saving = true; elements.companionError.textContent = '';
+  try {
+    const body = { name: elements.companionName.value.trim(), form: elements.companionFormSelect.value, palette: elements.companionPalette.value, accessory: elements.companionAccessory.value };
+    const result = await api('/api/companion', { method: 'PATCH', body: JSON.stringify(body) });
+    state.data.companion.profile = result.companion; elements.companionDialog.close(); renderCompanion(); toast(`${result.companion.name} is ready.`);
+  } catch (error) { elements.companionError.textContent = error.message; } finally { state.saving = false; }
 }
 
 function updateHeader() {
@@ -391,7 +532,7 @@ async function logTrackerSession(type, seconds) {
   state.tracker.history = state.tracker.history.slice(0, 50);
   renderTrackerHistory();
   renderTrackerStats();
-  try { state.tracker.history = (await api('/api/study-sessions', { method: 'POST', body: JSON.stringify(entry) })).sessions; renderTrackerHistory(); renderTrackerStats(); }
+  try { state.tracker.history = (await api('/api/study-sessions', { method: 'POST', body: JSON.stringify(entry) })).sessions; renderTrackerHistory(); renderTrackerStats(); await loadDashboard(); if (type !== 'rest') setCompanionReaction('celebrating'); }
   catch (caught) { toast(`Session could not sync: ${caught.message}`); }
 }
 
@@ -423,6 +564,7 @@ function renderTracker() {
   elements.trackerDistractionCount.textContent = String(tracker.distractions);
   renderTrackerStats();
   renderTrackerHistory();
+  renderCompanion();
 }
 
 function renderTrackerStats() {
@@ -588,6 +730,7 @@ async function recordOutcome(event, outcome, item) {
     const result = await api(`/api/events/${encodeURIComponent(event.id)}/outcome`, { method: 'POST', body: JSON.stringify({ outcome }) });
     toast(result.message);
     await loadDashboard();
+    setCompanionReaction(outcome === 'completed' ? 'celebrating' : 'recovering');
   } catch (error) {
     toast(error.message);
     await loadDashboard();
@@ -865,7 +1008,7 @@ async function saveCalendarEvent(submit) {
 
 async function deleteCalendarEvent() { const event = state.editingEvent; if (!event || state.saving) return; state.saving = true; try { await api(`/api/events/${encodeURIComponent(event.id)}`, { method: 'DELETE' }); elements.eventDialog.close(); toast('Event deleted.'); state.calendarRangeKey = ''; await renderSchedule(); } catch (error) { elements.eventError.textContent = error.message; } finally { state.saving = false; } }
 async function toggleEventPin() { const event = state.editingEvent; if (!event || state.saving) return; state.saving = true; try { const result = await api(`/api/events/${encodeURIComponent(event.id)}`, { method: 'PATCH', body: JSON.stringify({ pinned: !event.pinned }) }); state.editingEvent = result.event; elements.eventDialog.close(); toast(result.event.pinned ? 'Study block pinned.' : 'Study block can adapt again.'); state.calendarRangeKey = ''; await renderSchedule(); } catch (error) { elements.eventError.textContent = error.message; } finally { state.saving = false; } }
-async function saveEventOutcome(outcome) { const event = state.editingEvent; if (!event || state.saving) return; state.saving = true; try { const result = await api(`/api/events/${encodeURIComponent(event.id)}/outcome`, { method: 'POST', body: JSON.stringify({ outcome }) }); elements.eventDialog.close(); toast(result.message); state.calendarRangeKey = ''; await loadDashboard(); } catch (error) { elements.eventError.textContent = error.message; } finally { state.saving = false; } }
+async function saveEventOutcome(outcome) { const event = state.editingEvent; if (!event || state.saving) return; state.saving = true; try { const result = await api(`/api/events/${encodeURIComponent(event.id)}/outcome`, { method: 'POST', body: JSON.stringify({ outcome }) }); elements.eventDialog.close(); toast(result.message); state.calendarRangeKey = ''; await loadDashboard(); setCompanionReaction(outcome === 'completed' ? 'celebrating' : 'recovering'); } catch (error) { elements.eventError.textContent = error.message; } finally { state.saving = false; } }
 
 function openAssessment(task) {
   const completed = Math.max(0, task.estimatedMinutes - task.remainingMinutes); elements.assessmentDetail.innerHTML = `<div class="connection-card"><strong>${escapeHtml(task.title)}</strong><p>${escapeHtml(task.subject || 'General')} · ${escapeHtml(task.taskType)} · Due ${escapeHtml(formatDue(task.dueAt, state.data.user.timezone))}</p><div class="progress-track"><div class="progress-fill" style="width:${task.estimatedMinutes ? Math.round(completed / task.estimatedMinutes * 100) : 0}%"></div></div><p>${formatDuration(task.remainingMinutes)} remaining of ${formatDuration(task.estimatedMinutes)} · ${task.status}</p>${task.notes ? `<p>${escapeHtml(task.notes)}</p>` : ''}</div>`; document.querySelector('#assessment-title').textContent = task.title; elements.assessmentDialog.showModal();
@@ -873,6 +1016,7 @@ function openAssessment(task) {
 
 function renderMentor() {
   const { assistant, subjects, tasks, events, user, analytics, google, subjectContexts = [] } = state.data;
+  initializeArcadPreferences(user.id);
   elements.messages.innerHTML = '';
   const messages = assistant.messages.length ? assistant.messages : [{ role: 'assistant', content: state.data.briefing || 'Finish Life setup, then tell me what changed and I’ll update the real plan.' }];
   messages.forEach((message) => appendMessage(message.role, message.content));
@@ -954,7 +1098,7 @@ async function sendChat(event) {
   elements.composer.classList.add('sending');
   setIcon(elements.send, 'loader-circle');
   try {
-    const response = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message }) });
+    const response = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json', ...(state.csrfToken ? { 'x-csrf-token': state.csrfToken } : {}) }, body: JSON.stringify({ message }) });
     if (!response.ok) throw new Error((await response.json()).error || 'Arcad is unavailable.');
     const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let changed = false;
     while (true) {
@@ -963,7 +1107,7 @@ async function sendChat(event) {
       const lines = buffer.split('\n'); buffer = lines.pop() || '';
       for (const line of lines) if (line.trim()) {
         const payload = JSON.parse(line);
-        if (payload.type === 'message') { thinking.textContent = payload.message.content; changed = Boolean(payload.action || payload.proposal); }
+        if (payload.type === 'message') { thinking.textContent = payload.message.content; scrollMessagesToBottom(); changed = Boolean(payload.action || payload.proposal); }
         if (payload.type === 'error') throw new Error(payload.message);
       }
       if (done) break;
@@ -1155,7 +1299,18 @@ function rowsData(container) { return [...container.children].map((row) => Objec
 function setFormBusy(form, busy, buttonSelector, label) { form.querySelectorAll('button,input,select,textarea').forEach((control) => { control.disabled = busy; }); document.querySelector(buttonSelector).textContent = label; }
 function setLoading(value) { state.loading = value; elements.workspace.classList.toggle('loading', value); elements.views.forEach((view) => view.setAttribute('aria-busy', String(value))); }
 function setSelectValue(select, value) { if (![...select.options].some((option) => option.value === value)) select.add(new Option(value.replaceAll('_', ' '), value)); select.value = value; }
-function appendMessage(role, content) { const node = document.createElement('div'); node.className = `message ${role}`; node.textContent = content; elements.messages.append(node); elements.messages.scrollTop = elements.messages.scrollHeight; return node; }
+function appendMessage(role, content) {
+  const stickToBottom = isMessagesNearBottom();
+  const node = document.createElement('div'); node.className = `message ${role}`; node.textContent = content;
+  elements.messages.append(node);
+  if (stickToBottom) scrollMessagesToBottom(true);
+  return node;
+}
+function isMessagesNearBottom() { return elements.messages.scrollHeight - elements.messages.scrollTop - elements.messages.clientHeight < 72; }
+function scrollMessagesToBottom(force = false) {
+  if (!force && !isMessagesNearBottom()) return;
+  elements.messages.scrollTo({ top: elements.messages.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+}
 function operationSummary(operation) { const verb = operation.action === 'create' ? 'Add' : 'Move'; return `${verb} ${escapeHtml(operation.title || 'plan item')} · ${escapeHtml(formatDateTime(operation.startAt, state.data.user.timezone))}`; }
 function categoryClass(event) { return ['school', 'study', 'sport', 'extracurricular', 'other'].includes(event.category) ? event.category : (event.kind === 'training' ? 'sport' : event.kind === 'study' ? 'study' : 'other'); }
 function firstName(value) { return String(value || '').split(/[\s@]/)[0] || 'You'; }

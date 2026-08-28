@@ -436,66 +436,79 @@
       :root[data-theme="vanta"] .button, :root[data-theme="vanta"] .send, :root[data-theme="vanta"] .message.user, :root[data-theme="vanta"] .subject-upload, :root[data-theme="vanta"] .suggestion, :root[data-theme="vanta"] .rail-button.active { outline: 1px solid #ffd928; background: #000; color: #ffd928; box-shadow: none; }
       :root[data-theme="vanta"] .brand-mark, :root[data-theme="vanta"] .mobile-brand { background: #000; box-shadow: inset 0 0 0 1px #ffd928; }
       :root[data-theme="vanta"] .brand-mark img, :root[data-theme="vanta"] .mobile-brand img { filter: grayscale(1) sepia(1) saturate(8) hue-rotate(355deg) brightness(1.18); }
-      .arcad-view { position: relative; z-index: 1; display: flex; min-height: calc(100vh - 150px); }
-      .arcad-layout { display: grid; flex: 1; grid-template-columns: minmax(0,1fr) 360px; gap: clamp(24px,3vw,48px); align-items: stretch; max-width: 1420px; margin: 0 auto; }
-      .arcad-chat { display: flex; flex-direction: column; min-height: 0; background: transparent; }
-      .arcad-chat-head, .arcad-context-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 4px 18px; }
-      .mentor-status { display: inline-flex; align-items: center; gap: 7px; color: var(--green); font-size: 10px; font-weight: 720; }
+      .arcad-view { position: relative; z-index: 1; display: flex; min-height: calc(100vh - 124px); }
+      .arcad-layout { position: relative; display: grid; grid-template-columns: minmax(0,1fr); flex: 1; min-height: 0; max-width: 1420px; margin: 0 auto; transition: grid-template-columns 360ms cubic-bezier(.2,.8,.2,1); }
+      .arcad-layout.context-open { grid-template-columns: minmax(0,1fr) minmax(320px,380px); gap: clamp(18px,2.2vw,32px); }
+      .arcad-chat { min-height: min(720px,calc(100vh - 142px)); display: grid; grid-template-rows: auto minmax(0,1fr) auto auto; overflow: hidden; background: transparent; }
+      .arcad-chat-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 76px; padding: 16px 18px 14px 22px; }
+      .arcad-chat-title { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 17px; letter-spacing: -.035em; }
+      .arcad-chat-title::before { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 5px color-mix(in srgb,var(--green) 16%,transparent); content: ""; }
+      .arcad-segmented { display: inline-grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 3px; padding: 4px; border-radius: 14px; background: transparent; }
+      .arcad-segment { min-height: 32px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 700; transition: color 200ms ease,transform 180ms ease; }
+      .arcad-segment:hover { color: var(--accent-dark); }
+      .arcad-segment[aria-pressed="true"] { color: var(--ink); background: transparent; font-weight: 800; }
+      .mentor-status { display: inline-flex; align-items: center; gap: 7px; color: var(--green); font-size: 12px; font-weight: 720; }
       .mentor-status::before { width: 7px; height: 7px; border-radius: 50%; background: currentColor; content: ""; }
-      .messages { flex: 1; min-height: 360px; max-height: 520px; overflow: auto; padding: 18px 4px 22px; scrollbar-width: thin; }
-      .message { max-width: 82%; margin-bottom: 13px; padding: 12px 14px; border-radius: 15px; font-size: 12px; line-height: 1.55; white-space: pre-wrap; animation: arcad-message-in 240ms cubic-bezier(.2,.8,.2,1) both; }
-      .message.assistant { padding-left: 4px; background: transparent; }
-      .message.user { margin-left: auto; border-bottom-right-radius: 5px; background: var(--arcad-user); color: var(--arcad-user-ink); box-shadow: 0 10px 28px var(--arcad-glow); }
-      .proposals { padding: 0 4px; }
+      .messages { min-height: 0; overflow: auto; padding: 28px clamp(18px,4vw,46px) 20px; scrollbar-color: color-mix(in srgb,var(--accent) 44%,transparent) transparent; scrollbar-width: thin; overscroll-behavior: contain; }
+      .message { max-width: min(82%,680px); margin-bottom: 16px; padding: 13px 16px; border-radius: 18px; font-size: 14px; line-height: 1.58; white-space: pre-wrap; animation: arcad-message-in 380ms cubic-bezier(.18,.89,.32,1.28) both; }
+      .message.assistant { padding: 5px 4px; background: transparent; }
+      .message.user { margin-left: auto; border-bottom-right-radius: 6px; background: linear-gradient(145deg,color-mix(in srgb,var(--arcad-user) 94%,white 6%),var(--arcad-user)); color: var(--arcad-user-ink); box-shadow: 0 12px 28px var(--arcad-glow); }
+      .proposals { padding: 0 clamp(18px,4vw,46px); }
       .proposal { margin-bottom: 13px; padding: 16px; border-radius: 18px; background: var(--arcad-glass); box-shadow: 0 18px 45px var(--arcad-glow); backdrop-filter: blur(18px); }
       .proposal-top { display: flex; justify-content: space-between; gap: 12px; }
-      .proposal strong { font-size: 11px; } .proposal p { margin: 7px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
-      .proposal-chip { color: var(--accent-dark); font-size: 8px; font-weight: 760; text-transform: uppercase; }
-      .suggestions { display: flex; gap: 8px; overflow-x: auto; padding: 0 4px 13px; scrollbar-width: none; }
-      .suggestion { flex: 0 0 auto; padding: 9px 12px; border: 0; border-radius: 999px; background: color-mix(in srgb,var(--arcad-glass) 82%,transparent); color: var(--muted); font-size: 9px; box-shadow: 0 6px 18px color-mix(in srgb,var(--arcad-glow) 52%,transparent); }
+      .proposal strong { font-size: 13px; } .proposal p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+      .proposal-chip { color: var(--accent-dark); font-size: 11px; font-weight: 760; text-transform: uppercase; }
+      .suggestions { display: flex; gap: 8px; overflow-x: auto; padding: 4px clamp(18px,4vw,46px) 14px; scrollbar-width: none; }
+      .suggestion { flex: 0 0 auto; padding: 9px 13px; border: 0; border-radius: 999px; background: color-mix(in srgb,var(--arcad-glass) 45%,transparent); color: var(--muted); font-size: 12px; transition: color 160ms ease,transform 160ms ease,background 160ms ease; }
       .suggestion:hover { color: var(--accent-dark); transform: translateY(-1px); }
-      .composer { display: grid; grid-template-columns: minmax(0,1fr) 46px; gap: 9px; margin: auto 4px 0; padding: 7px 7px 7px 18px; border-radius: 999px; background: var(--arcad-glass); box-shadow: 0 18px 48px var(--arcad-glow); backdrop-filter: blur(22px) saturate(135%); transition: transform 180ms ease,box-shadow 180ms ease,background 180ms ease; }
-      .composer:focus-within { transform: translateY(-2px); background: color-mix(in srgb,var(--arcad-glass) 88%,white 12%); box-shadow: 0 22px 56px var(--arcad-glow),0 0 0 4px color-mix(in srgb,var(--accent) 16%,transparent); }
-      .composer input { min-width: 0; height: 46px; padding: 0; border: 0; outline: 0; background: transparent; font-size: 12px; }
-      .send { width: 46px; height: 46px; border: 0; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 16px; box-shadow: 0 8px 20px color-mix(in srgb,var(--accent) 34%,transparent); transition: transform 160ms ease,filter 160ms ease; }
+      .composer { display: grid; grid-template-columns: minmax(0,1fr) 48px; gap: 9px; margin: 0 clamp(14px,2.5vw,30px) clamp(14px,2.5vw,26px); padding: 7px 7px 7px 18px; border: 0; border-radius: 999px; background: color-mix(in srgb,var(--arcad-glass) 94%,transparent); backdrop-filter: blur(22px) saturate(135%); transition: transform 240ms cubic-bezier(.2,.8,.2,1),background 240ms ease; }
+      .composer:focus-within { transform: translateY(-2px); background: color-mix(in srgb,var(--arcad-glass) 88%,white 12%); }
+      .composer input { min-width: 0; height: 48px; padding: 0; border: 0; outline: 0; background: transparent; font-size: 14px; }
+      .send { width: 48px; height: 48px; border: 0; border-radius: 14px; background: var(--accent); color: var(--on-accent); font-size: 16px; box-shadow: 0 8px 20px color-mix(in srgb,var(--accent) 34%,transparent); transition: transform 180ms cubic-bezier(.2,.8,.2,1),filter 160ms ease,border-radius 180ms ease; }
       .send:hover { transform: translateY(-1px) scale(1.03); filter: brightness(1.04); }
       .send:disabled { opacity: .5; cursor: wait; }
       .composer.sending .send { transform: scale(.92); }
       .composer.sending .send .lucide { animation: arcad-spin 800ms linear infinite; }
-      .arcad-context { min-width: 0; padding-top: 2px; }
-      .context-list { display: grid; gap: 12px; background: transparent; }
+      .arcad-context { min-width: 0; min-height: min(720px,calc(100vh - 142px)); display: none; flex-direction: column; overflow: hidden; background: transparent; animation: arcad-context-in 360ms cubic-bezier(.2,.8,.2,1) both; }
+      .arcad-layout.context-open .arcad-context { display: flex; }
+      .arcad-context-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px; }
+      .arcad-context-head .panel-title { font-size: 16px; }
+      .arcad-context-close { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 11px; background: color-mix(in srgb,var(--canvas) 48%,transparent); color: var(--muted); transition: color 160ms ease,background 160ms ease,transform 160ms ease; }
+      .arcad-context-close:hover { color: var(--accent-dark); background: var(--accent-soft); transform: scale(1.04); }
+      .context-list { display: grid; gap: 12px; flex: 1; overflow: auto; padding: 14px; background: transparent; scrollbar-width: thin; }
       .arcad-access-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-column: 1 / -1; gap: 8px; }
-      .arcad-access-item { padding: 12px; border-radius: 15px; background: color-mix(in srgb,var(--arcad-glass) 62%,transparent); }
+      .arcad-access-item { padding: 14px; border: 0; border-radius: 16px; background: color-mix(in srgb,var(--arcad-glass) 40%,transparent); }
       .arcad-access-item span, .arcad-access-item strong { display: block; }
-      .arcad-access-item span { color: var(--muted); font-size: 8px; }
-      .arcad-access-item strong { margin-top: 5px; font-size: 10px; line-height: 1.35; }
+      .arcad-access-item span { color: var(--muted); font-size: 12px; }
+      .arcad-access-item strong { margin-top: 6px; font-size: 13px; line-height: 1.35; }
       .arcad-access-item i { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb,var(--green) 15%,transparent); }
       .context-row { padding: 13px 4px; background: transparent; }
-      .context-row span { display: block; color: var(--muted); font-size: 9px; }
-      .context-row strong { display: block; margin-top: 6px; font-size: 11px; line-height: 1.4; }
-      .subject-context-card { padding: 15px; border-radius: 18px; background: color-mix(in srgb,var(--arcad-glass) 78%,transparent); box-shadow: 0 12px 32px color-mix(in srgb,var(--arcad-glow) 58%,transparent); backdrop-filter: blur(14px); }
+      .context-row span { display: block; color: var(--muted); font-size: 12px; }
+      .context-row strong { display: block; margin-top: 6px; font-size: 14px; line-height: 1.4; }
+      .subject-context-card { padding: 15px; border-radius: 18px; background: color-mix(in srgb,var(--arcad-glass) 45%,transparent); }
       .subject-context-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-      .subject-context-name { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: 12px; }
+      .subject-context-name { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: 14px; }
       .subject-context-dot { width: 9px; height: 9px; flex: 0 0 auto; border-radius: 50%; background: var(--subject-colour,var(--accent)); box-shadow: 0 0 12px color-mix(in srgb,var(--subject-colour,var(--accent)) 52%,transparent); }
-      .subject-context-toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 8px; }
+      .subject-context-toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
       .subject-context-toggle input { width: 15px; height: 15px; accent-color: var(--accent); }
-      .subject-context-stats { display: flex; gap: 10px; margin: 11px 0; color: var(--muted); font-size: 8px; }
-      .subject-context-note { width: 100%; min-height: 68px; resize: vertical; padding: 10px 11px; border: 0; border-radius: 12px; background: color-mix(in srgb,var(--canvas) 52%,transparent); color: var(--ink); font-size: 10px; line-height: 1.5; outline: 0; }
+      .subject-context-stats { display: flex; gap: 10px; margin: 11px 0; color: var(--muted); font-size: 12px; }
+      .subject-context-note { width: 100%; min-height: 82px; resize: vertical; padding: 11px 12px; border: 0; border-radius: 12px; background: color-mix(in srgb,var(--canvas) 52%,transparent); color: var(--ink); font-size: 13px; line-height: 1.5; outline: 0; }
       .subject-context-note:focus { box-shadow: 0 0 0 3px color-mix(in srgb,var(--accent) 15%,transparent); }
       .subject-context-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
-      .subject-upload { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 11px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-dark); font-size: 9px; font-weight: 700; cursor: pointer; }
+      .subject-upload { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 11px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-dark); font-size: 12px; font-weight: 700; cursor: pointer; }
       .subject-upload input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
-      .subject-file-count { color: var(--muted); font-size: 8px; }
+      .subject-file-count { color: var(--muted); font-size: 12px; }
       .subject-file-list { display: grid; gap: 6px; margin-top: 10px; }
       .subject-file { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 8px 9px; border-radius: 11px; background: color-mix(in srgb,var(--canvas) 48%,transparent); }
-      .subject-file a { min-width: 0; overflow: hidden; font-size: 9px; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
-      .subject-file small { display: block; margin-top: 3px; color: var(--muted); font-size: 7px; font-weight: 500; }
+      .subject-file a { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
+      .subject-file small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 500; }
       .subject-file-delete { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); }
       .subject-file-delete:hover { background: var(--danger-soft); color: var(--danger); }
-      .subject-context-status { min-height: 12px; margin-top: 7px; color: var(--muted); font-size: 7px; text-align: right; }
+      .subject-context-status { min-height: 16px; margin-top: 7px; color: var(--muted); font-size: 11px; text-align: right; }
 
       @keyframes arcad-twinkle { from { opacity: calc(var(--star-opacity,.65) * .45); transform: rotate(var(--star-rotate,0deg)) scale(.84); } to { opacity: var(--star-opacity,.65); transform: rotate(var(--star-rotate,0deg)) scale(1.08); } }
-      @keyframes arcad-message-in { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes arcad-message-in { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+      @keyframes arcad-context-in { from { opacity: 0; transform: translateX(18px) scale(.985); } to { opacity: 1; transform: translateX(0) scale(1); } }
       @keyframes arcad-spin { to { transform: rotate(360deg); } }
 
       dialog { width: min(620px, calc(100% - 24px)); max-height: calc(100vh - 30px); padding: 0; overflow: auto; border: 1px solid var(--line); border-radius: 23px; color: var(--ink); background: var(--panel); box-shadow: var(--shadow-high); }
@@ -534,7 +547,7 @@
       .toast.visible { opacity: 1; transform: translateY(0); }
 
       @media (max-width: 1100px) {
-        .today-grid, .arcad-layout { grid-template-columns: 1fr; }
+        .today-grid { grid-template-columns: 1fr; }
         .side-stack { grid-template-columns: 1fr 1fr; }
         .analytics-grid { grid-template-columns: repeat(3,1fr); }
         .analytics-layout { grid-template-columns: 1fr; }
@@ -542,8 +555,7 @@
         .time-calendar:not(.day-view), .month-calendar { min-width: 790px; }
         .input-row, .task-input-row, .commitment-input-row { grid-template-columns: repeat(3,minmax(120px,1fr)); }
         .remove-row { align-self: end; }
-        .arcad-context { padding: 8px 4px 92px; }
-        .context-list { grid-template-columns: repeat(2,minmax(0,1fr)); }
+        .arcad-layout.context-open { grid-template-columns: minmax(0,1fr) minmax(300px,340px); gap: 18px; }
       }
       @media (max-width: 720px) {
         .app-shell, .app-shell.rail-open { grid-template-columns: 1fr; padding-bottom: 68px; }
@@ -557,8 +569,14 @@
         .workspace.arcad-active { padding-bottom: 88px; }
         .arcad-sky { height: 33%; }
         .arcad-view { min-height: calc(100vh - 176px); }
-        .messages { max-height: 54vh; }
-        .context-list { grid-template-columns: 1fr; }
+        .arcad-layout.context-open { display: block; }
+        .arcad-chat { min-height: calc(100vh - 176px); }
+        .arcad-context { position: absolute; inset: 0; z-index: 4; min-height: 0; background: var(--canvas); }
+        .arcad-chat-head { min-height: 68px; padding: 12px 14px 12px 17px; }
+        .arcad-chat-title { font-size: 15px; }
+        .arcad-segment { padding: 0 10px; }
+        .messages { padding: 24px 18px 18px; }
+        .suggestions { padding-inline: 14px; }
         .mobile-brand { display: block; width: 40px; height: 40px; }
         .topbar { margin-bottom: 20px; }
         .top-actions .button:not(.primary) { display: none; }
@@ -584,6 +602,9 @@
         .input-row, .task-input-row, .commitment-input-row { grid-template-columns: 1fr 1fr; }
         .remove-row { width: 100%; }
       }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+      }
       @media (max-width: 460px) {
         .topbar-heading h1 { font-size: 30px; }
         .metric-grid { grid-template-columns: 1fr; }
@@ -601,6 +622,18 @@
         .tracker-history-time { grid-column: 1 / -1; }
       }
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+      .companion-dock { position: fixed; right: 24px; bottom: 24px; z-index: 20; display: grid; place-items: center; padding: 9px; border: 0; border-radius: 50%; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-low); cursor: grab; user-select: none; touch-action: none; }
+      .companion-dock.companion-dragging { cursor: grabbing; }.companion-dock.companion-dragging .arcad-companion { animation: none; }
+      .arcad-companion { --companion-a: #8d7cff; --companion-b: #c7baff; position: relative; display: inline-grid; place-items: center; width: 56px; height: 56px; flex: 0 0 auto; border-radius: 50%; background: radial-gradient(circle at 34% 28%, #fff 0 5%, var(--companion-b) 19%, var(--companion-a) 56%, #3b2f78 100%); box-shadow: inset -7px -8px 15px rgba(29,18,77,.28), 0 0 0 4px color-mix(in srgb, var(--companion-a) 18%, transparent), 0 8px 20px color-mix(in srgb, var(--companion-a) 34%, transparent); animation: companion-float 4s ease-in-out infinite; }
+      .arcad-companion::before, .arcad-companion::after { content: ''; position: absolute; }.arcad-companion::before { width: 9px; height: 9px; top: 20px; left: 17px; border-radius: 50%; background: #211b40; box-shadow: 15px 0 #211b40; }.arcad-companion::after { width: 11px; height: 5px; top: 34px; left: 22px; border-bottom: 2px solid #211b40; border-radius: 50%; }
+      .arcad-companion[data-form="comet"] { border-radius: 55% 45% 53% 47%; transform: rotate(-18deg); }.arcad-companion[data-form="comet"] .companion-tail { position: absolute; right: 79%; width: 34px; height: 17px; border-radius: 100% 0 0 100%; background: linear-gradient(90deg, transparent, var(--companion-b)); opacity: .78; }
+      .arcad-companion[data-form="nebula"] { border-radius: 42% 58% 62% 38%; filter: saturate(1.15); }.arcad-companion[data-palette="aqua"] { --companion-a:#31a8be; --companion-b:#a7f3ee; }.arcad-companion[data-palette="coral"] { --companion-a:#d76f87; --companion-b:#ffc4b8; }.arcad-companion[data-palette="gold"] { --companion-a:#c58b25; --companion-b:#ffe5a0; }
+      .companion-accessory { position: absolute; z-index: 2; pointer-events: none; }.companion-accessory.ring { width: 66px; height: 20px; border: 3px solid #f9dd8a; border-radius: 50%; transform: rotate(-18deg); }.companion-accessory.star { right: -8px; top: -10px; color: #ffe697; font-size: 24px; }.companion-accessory.book { bottom: -7px; right: -5px; padding: 3px 5px; border-radius: 3px; background: #f5d99a; color: #5e3c25; font-size: 13px; }.companion-accessory.headphones { inset: -6px; border: 5px solid #31324d; border-bottom: 0; border-radius: 50% 50% 0 0; }
+      .companion-studio-preview { display: grid; place-items: center; min-height: 132px; margin-bottom: 12px; border-radius: var(--radius); background: var(--canvas); }.companion-studio-preview .arcad-companion { width: 104px; height: 104px; }.companion-studio-preview .arcad-companion::before { top: 38px; left: 33px; }.companion-studio-preview .arcad-companion::after { top: 57px; left: 43px; }
+      .companion-placeholder-note { margin: 0 0 18px; }
+      .companion-recovering .arcad-companion { animation: companion-breathe 3.5s ease-in-out infinite; }.companion-focused .arcad-companion { animation: companion-focus 1.7s ease-in-out infinite; }.companion-celebrating .arcad-companion { animation: companion-celebrate .75s ease-in-out infinite alternate; }
+      @keyframes companion-float { from { translate: 0 -2px; } to { translate: 0 4px; } } @keyframes companion-breathe { 50% { scale: .94; } } @keyframes companion-focus { 50% { box-shadow: inset -7px -8px 15px rgba(29,18,77,.28), 0 0 0 8px color-mix(in srgb, var(--companion-a) 15%, transparent), 0 8px 20px color-mix(in srgb, var(--companion-a) 34%, transparent); } } @keyframes companion-celebrate { to { translate: 0 -8px; rotate: 8deg; } }
+      @media (max-width: 720px) { .companion-dock { right: 12px; bottom: 12px; } }
     </style>
   </head>
   <body>
@@ -612,7 +645,7 @@
           <button class="rail-toggle" id="rail-toggle" type="button" aria-label="Expand navigation" aria-expanded="false"><i data-lucide="panel-left-open" aria-hidden="true"></i></button>
         </div>
         <nav class="rail-nav" aria-label="Primary">
-          <button class="rail-button" type="button" data-view="arcad" aria-label="Arcad"><span class="rail-icon"><i data-lucide="sparkles" aria-hidden="true"></i></span><span class="rail-label">Arcad</span></button>
+          <button class="rail-button" type="button" data-view="arcad" aria-label="Talk to Arcad"><span class="rail-icon"><i data-lucide="sparkles" aria-hidden="true"></i></span><span class="rail-label">Arcad</span></button>
           <button class="rail-button active" type="button" data-view="today" aria-label="Today" aria-current="page"><span class="rail-icon"><i data-lucide="house" aria-hidden="true"></i></span><span class="rail-label">Today</span></button>
           <button class="rail-button" type="button" data-view="schedule" aria-label="Schedule"><span class="rail-icon"><i data-lucide="calendar-days" aria-hidden="true"></i></span><span class="rail-label">Schedule</span></button>
           <button class="rail-button" type="button" data-view="study-tracker" aria-label="Study Tracker"><span class="rail-icon"><i data-lucide="timer" aria-hidden="true"></i></span><span class="rail-label">Study Tracker</span></button>
@@ -624,6 +657,7 @@
           <div class="account-menu" id="account-menu" role="menu" hidden>
             <div class="account-menu-head"><strong id="account-menu-name">Arcadia account</strong><span id="account-menu-email">Signed in</span></div>
             <div class="account-menu-actions">
+              <button class="account-menu-action" id="account-companion-button" type="button" role="menuitem">Customise companion</button>
               <button class="account-menu-action" id="account-settings-button" type="button" role="menuitem">Settings</button>
               <button class="account-menu-action danger" id="account-sign-out-button" type="button" role="menuitem">Sign out</button>
             </div>
@@ -644,6 +678,10 @@
             <button class="button primary" id="add-task-button" type="button">Add task</button>
           </div>
         </header>
+
+        <button class="companion-dock" id="companion-dock" type="button" aria-label="Arcad companion — drag to move, click for a wave">
+          <span class="arcad-companion" id="companion-dock-orb" aria-hidden="true"><span class="companion-tail"></span><span class="companion-accessory"></span></span>
+        </button>
 
         <section data-view-panel="today" aria-labelledby="page-title">
           <article class="briefing-card" id="briefing-card">
@@ -742,15 +780,22 @@
         </section>
 
         <section class="arcad-view" data-view-panel="arcad" aria-labelledby="page-title" hidden>
-          <div class="arcad-layout">
+          <div class="arcad-layout" id="arcad-layout">
             <article class="arcad-chat">
+              <header class="arcad-chat-head">
+                <h2 class="arcad-chat-title">Arcad</h2>
+                <div class="arcad-segmented" role="group" aria-label="Arcad workspace">
+                  <button class="arcad-segment" id="arcad-chat-tab" type="button" aria-pressed="true">Chat</button>
+                  <button class="arcad-segment" id="arcad-context-tab" type="button" aria-pressed="false" aria-controls="arcad-context">Context</button>
+                </div>
+              </header>
               <div class="messages" id="messages" aria-live="polite"></div>
               <div class="proposals" id="proposals"></div>
               <div class="suggestions"><button class="suggestion" type="button" data-prompt="What should I do next?">What should I do next?</button><button class="suggestion" type="button" data-prompt="I didn't finish maths.">I missed some work</button><button class="suggestion" type="button" data-prompt="I need another hour for chemistry.">I need more time</button></div>
               <form class="composer" id="composer"><label for="chat-input" style="position:absolute;left:-9999px">Message Arcad</label><input id="chat-input" maxlength="2000" autocomplete="off" placeholder="Message Arcad…" /><button class="send" id="send-button" type="submit" aria-label="Send message to Arcad"><i data-lucide="arrow-up" aria-hidden="true"></i></button></form>
             </article>
-            <aside class="arcad-context">
-              <header class="arcad-context-head"><div><h2 class="panel-title">What Arcad knows</h2><p class="panel-subtitle">The live context shaping your plan.</p></div></header>
+            <aside class="arcad-context" id="arcad-context" aria-label="Arcad context">
+              <header class="arcad-context-head"><h2 class="panel-title">Context</h2><button class="arcad-context-close" id="arcad-context-close" type="button" aria-label="Close context"><i data-lucide="x" aria-hidden="true"></i></button></header>
               <div class="context-list" id="mentor-context"><div class="context-row"><span>Loading</span><strong>Your real plan</strong></div></div>
             </aside>
           </div>
@@ -801,6 +846,11 @@
 
     <dialog id="assessment-dialog" aria-labelledby="assessment-title">
       <div class="modal-head"><div><p class="eyebrow">Assessment</p><h2 id="assessment-title">Assessment details</h2></div><button class="close-button" type="button" data-close="assessment-dialog" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button></div><div class="modal-body" id="assessment-detail"></div><div class="modal-actions"><span></span><button class="button" type="button" data-close="assessment-dialog">Close</button></div>
+    </dialog>
+
+    <dialog id="companion-dialog" aria-labelledby="companion-dialog-title">
+      <div class="modal-head"><div><p class="eyebrow">Your study companion</p><h2 id="companion-dialog-title">Companion studio</h2></div><button class="close-button" type="button" data-close="companion-dialog" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button></div>
+      <form id="companion-form"><div class="form-body"><div class="companion-studio-preview" id="companion-preview"><span class="arcad-companion" id="companion-preview-orb" aria-hidden="true"><span class="companion-tail"></span><span class="companion-accessory"></span></span></div><p class="panel-subtitle companion-placeholder-note">Placeholder art: the companion forms, palettes, and accessories shown here are temporary textures and will be replaced with final artwork.</p><div class="form-grid"><div class="field wide"><label for="companion-name">Name</label><input id="companion-name" maxlength="40" required /></div><div class="field"><label for="companion-form-select">Form</label><select id="companion-form-select"><option value="orb">Orb</option><option value="comet">Comet</option><option value="nebula">Nebula</option></select></div><div class="field"><label for="companion-palette">Palette</label><select id="companion-palette"><option value="violet">Violet</option><option value="aqua">Aqua</option><option value="coral">Coral</option><option value="gold">Gold</option></select></div><div class="field wide"><label for="companion-accessory">Accessory</label><select id="companion-accessory"><option value="none">None</option><option value="ring">Orbit ring</option><option value="star">Star spark</option><option value="book">Study book</option><option value="headphones">Headphones</option></select></div></div><p class="form-error" id="companion-error" aria-live="polite"></p></div><div class="modal-actions"><span class="panel-subtitle">Everything is yours to choose from.</span><button class="button primary" type="submit">Save companion</button></div></form>
     </dialog>
 
     <dialog id="settings-dialog" aria-labelledby="settings-title">

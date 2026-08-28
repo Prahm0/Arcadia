@@ -11,9 +11,9 @@ import appleTouchIcon from "../apple-touch-icon.png?inline";
 import socialPreview from "../og-v3.png?inline";
 import {
   completeEvent, createEvent, createSubjectFileMetadata, createTask, deleteEvent, deleteSubjectFileMetadata, ensureDatabase,
-  getAnalytics, getEvent, getPlannerData, getSubjectFile, listActivity, listEvents, listMessages, listPendingProposals,
+  getAnalytics, getCompanion, getEvent, getPlannerData, getSubjectFile, listActivity, listEvents, listMessages, listPendingProposals,
   listStudySessions, listSubjectContexts, markEventOutcome, saveOnboarding, saveStudySessions, saveSubjectContext,
-  clearStudySessions, updateEvent, weekRange
+  clearStudySessions, updateCompanion, updateEvent, weekRange
 } from "./db.js";
 import {
   beginGoogleOAuth, disconnectGoogle, finishGoogleOAuth, getGoogleStatus, publishArcadiaEvent,
@@ -104,6 +104,7 @@ async function routeApi(request, env, context, url, authenticatedUser, csrfToken
       listActivity(env, authenticatedUser.id, { start: new Date(Date.now() - 14 * 86_400_000).toISOString(), limit: 30 }),
       listSubjectContexts(env, authenticatedUser.id)
     ]);
+    const companion = await getCompanion(env, authenticatedUser.id, { currentStreak: analytics.currentStreak });
     if (google.connected && (!google.lastSyncAt || Date.now() - Date.parse(google.lastSyncAt) > 5 * 60 * 1000)) {
       context?.waitUntil?.(syncGoogleCalendars(env, authenticatedUser.id).catch((error) => console.error("Google sync failed", error?.message)));
     }
@@ -116,7 +117,7 @@ async function routeApi(request, env, context, url, authenticatedUser, csrfToken
     };
     return json({
       user, profile: planner.profile, preferences: planner.preferences, subjects: planner.subjects,
-      tasks: planner.tasks, commitments: planner.commitments, range, events, analytics, activity, subjectContexts,
+      tasks: planner.tasks, commitments: planner.commitments, range, events, analytics, activity, subjectContexts, companion,
       focusTasks: focusTasks(planner.tasks),
       briefing: planner.profile?.onboardingComplete ? buildBriefing({ ...planner, events, now: new Date() }) : null,
       google,
@@ -164,6 +165,10 @@ async function routeApi(request, env, context, url, authenticatedUser, csrfToken
   }
 
   if (method === "GET" && path === "/api/study-sessions") return json({ sessions: await listStudySessions(env, authenticatedUser.id) });
+  if (method === "PATCH" && path === "/api/companion") {
+    const companion = await updateCompanion(env, authenticatedUser.id, validateCompanion(await readJson(request)));
+    return json({ companion });
+  }
   if (method === "POST" && path === "/api/study-sessions") {
     const body = await readJson(request); const raw = Array.isArray(body.sessions) ? body.sessions : [body];
     if (!raw.length || raw.length > 50) throw badRequest("Add between 1 and 50 study sessions at a time.");
@@ -341,6 +346,18 @@ function validateOnboarding(body) {
   const commitments = (Array.isArray(body.commitments) ? body.commitments : []).slice(0, 60).map(validateCommitment);
   const preferences = validatePreferences(body.preferences || {});
   return { name, grade, timezone, subjects, tasks, commitments, preferences };
+}
+
+function validateCompanion(body) {
+  const name = text(body.name, 40);
+  const form = text(body.form, 20);
+  const palette = text(body.palette, 20);
+  const accessory = text(body.accessory, 20);
+  if (!name) throw badRequest("Give your companion a name.");
+  if (!["orb", "comet", "nebula"].includes(form)) throw badRequest("Choose a valid companion form.");
+  if (!["violet", "aqua", "coral", "gold"].includes(palette)) throw badRequest("Choose a valid companion palette.");
+  if (!["none", "ring", "star", "book", "headphones"].includes(accessory)) throw badRequest("Choose a valid companion accessory.");
+  return { name, form, palette, accessory };
 }
 
 function validateTask(body, { subjects } = {}) {

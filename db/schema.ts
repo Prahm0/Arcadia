@@ -240,6 +240,15 @@ export const schemaStatements = [
     expires_at TEXT NOT NULL,
     applied_at TEXT
   )`,
+  `CREATE TABLE IF NOT EXISTS companion_profiles (
+    user_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL DEFAULT 'Arcad' CHECK (length(name) BETWEEN 1 AND 40),
+    form TEXT NOT NULL DEFAULT 'orb' CHECK (form IN ('orb', 'comet', 'nebula')),
+    palette TEXT NOT NULL DEFAULT 'violet' CHECK (palette IN ('violet', 'aqua', 'coral', 'gold')),
+    accessory TEXT NOT NULL DEFAULT 'ring' CHECK (accessory IN ('none', 'ring', 'star', 'book', 'headphones')),
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES profiles(user_id) ON DELETE CASCADE
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_events_user_start ON events(user_id, start_at)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_events_external ON events(user_id, calendar_id, external_id) WHERE external_id IS NOT NULL`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_events_commitment_occurrence ON events(user_id, commitment_id, occurrence_key) WHERE commitment_id IS NOT NULL`,
@@ -258,4 +267,5 @@ export const schemaStatements = [
   ,`CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id, expires_at)`
   ,`CREATE INDEX IF NOT EXISTS idx_subject_contexts_user ON subject_contexts(user_id, updated_at)`
   ,`CREATE INDEX IF NOT EXISTS idx_subject_files_user_subject ON subject_files(user_id, subject_id, created_at)`
+  ,`CREATE INDEX IF NOT EXISTS idx_companion_profiles_updated ON companion_profiles(updated_at)`
 ] as const;

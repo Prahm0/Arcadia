@@ -116,6 +116,30 @@ export async function listStudySessions(env, userId, limit = 50) {
   return result.results || [];
 }
 
+export async function getCompanion(env, userId, { currentStreak = 0 } = {}) {
+  const now = new Date().toISOString();
+  await env.DB.prepare(`INSERT OR IGNORE INTO companion_profiles (user_id, updated_at) VALUES (?, ?)`)
+    .bind(userId, now).run();
+  const [profile, totals, latest] = await Promise.all([
+    env.DB.prepare(`SELECT name, form, palette, accessory, updated_at AS updatedAt FROM companion_profiles WHERE user_id = ?`).bind(userId).first(),
+    env.DB.prepare(`SELECT COALESCE(SUM(duration_minutes), 0) AS focusedMinutes FROM study_sessions WHERE user_id = ? AND mode != 'rest'`).bind(userId).first(),
+    env.DB.prepare(`SELECT outcome FROM activity WHERE user_id = ? ORDER BY occurred_at DESC, created_at DESC LIMIT 1`).bind(userId).first()
+  ]);
+  const focusedMinutes = Math.max(0, Number(totals?.focusedMinutes || 0));
+  const level = focusedMinutes >= 1800 ? 4 : focusedMinutes >= 900 ? 3 : focusedMinutes >= 300 ? 2 : 1;
+  return { profile, focusedMinutes, level, currentStreak: Math.max(0, Number(currentStreak || 0)), state: latest?.outcome === 'missed' ? 'recovering' : 'ready' };
+}
+
+export async function updateCompanion(env, userId, input) {
+  const now = new Date().toISOString();
+  await env.DB.prepare(`INSERT INTO companion_profiles (user_id, name, form, palette, accessory, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET name = excluded.name, form = excluded.form, palette = excluded.palette,
+      accessory = excluded.accessory, updated_at = excluded.updated_at`)
+    .bind(userId, input.name, input.form, input.palette, input.accessory, now).run();
+  return env.DB.prepare(`SELECT name, form, palette, accessory, updated_at AS updatedAt FROM companion_profiles WHERE user_id = ?`).bind(userId).first();
+}
+
 export async function saveStudySessions(env, userId, entries) {
   const now = new Date().toISOString();
   const statements = entries.map((entry) => {
