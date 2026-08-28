@@ -33,7 +33,7 @@ const state = {
 const elements = {
   shell: document.querySelector('.app-shell'), workspace: document.querySelector('.workspace'),
   viewButtons: [...document.querySelectorAll('[data-view]')], views: [...document.querySelectorAll('[data-view-panel]')],
-  pageTitle: document.querySelector('#page-title'), pageEyebrow: document.querySelector('#page-eyebrow'),
+  pageTitle: document.querySelector('#page-title'), pageEyebrow: document.querySelector('#page-eyebrow'), briefingCard: document.querySelector('#briefing-card'),
   avatar: document.querySelector('#avatar'), accountMenu: document.querySelector('#account-menu'), briefing: document.querySelector('#briefing'),
   todayTimeline: document.querySelector('#today-timeline'), todaySummary: document.querySelector('#today-summary'),
   todayLoad: document.querySelector('#today-load'), focusList: document.querySelector('#focus-list'),
@@ -195,10 +195,9 @@ async function loadDashboard() {
     renderAll();
     if (!data.user.onboardingComplete && !elements.onboardingDialog.open) openLifeSetup({ firstRun: true });
   } catch (error) {
-    const content = emptyState('Arcadia is unavailable', error.message);
-    elements.todayTimeline.innerHTML = content;
-    elements.weekBoard.innerHTML = content;
-    elements.messages.innerHTML = content;
+    elements.todayTimeline.innerHTML = '';
+    elements.weekBoard.innerHTML = '';
+    elements.messages.innerHTML = '';
     toast(error.message);
   } finally { setLoading(false); }
 }
@@ -241,8 +240,8 @@ function updateHeader() {
     elements.pageEyebrow.textContent = 'Study with your people';
     elements.pageTitle.textContent = 'Study Group';
   } else {
-    elements.pageEyebrow.textContent = 'Plan, recover, adapt';
-    elements.pageTitle.textContent = 'Arcad';
+    elements.pageEyebrow.textContent = '';
+    elements.pageTitle.textContent = '';
   }
 }
 
@@ -529,7 +528,8 @@ function moveAnalytics(direction) {
 
 function renderToday() {
   const { user, events, analytics, focusTasks, tasks, briefing } = state.data;
-  elements.briefing.textContent = briefing || 'Finish Life setup to generate a briefing from your real schedule.';
+  elements.briefing.textContent = briefing || '';
+  elements.briefingCard.hidden = !briefing;
   const todayKey = dateKeyInZone(new Date(), user.timezone);
   const today = events.filter((event) => dateKeyInZone(event.startAt, user.timezone) === todayKey && event.status !== 'cancelled')
     .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
@@ -877,7 +877,6 @@ function renderMentor() {
   const messages = assistant.messages.length ? assistant.messages : [{ role: 'assistant', content: state.data.briefing || 'Finish Life setup, then tell me what changed and I’ll update the real plan.' }];
   messages.forEach((message) => appendMessage(message.role, message.content));
   renderProposals(assistant.proposals);
-  elements.mentorStatus.textContent = assistant.providerConfigured ? 'AI + planner ready' : 'Planner ready';
   const openTasks = tasks.filter((task) => task.status === 'pending');
   const todayKey = dateKeyInZone(new Date(), user.timezone);
   const todayCount = events.filter((event) => dateKeyInZone(event.startAt, user.timezone) === todayKey && event.status !== 'cancelled').length;
@@ -970,7 +969,7 @@ async function sendChat(event) {
       if (done) break;
     }
     if (changed) await loadDashboard();
-  } catch (error) { thinking.textContent = error.message; }
+  } catch (error) { thinking.remove(); }
   finally { state.saving = false; elements.send.disabled = false; elements.composer.classList.remove('sending'); setIcon(elements.send, 'arrow-up'); elements.chatInput.focus(); }
 }
 

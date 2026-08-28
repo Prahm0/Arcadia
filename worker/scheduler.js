@@ -141,7 +141,7 @@ export function buildBriefing({ profile, tasks, events, preferences, now = new D
   }).slice(0, 2);
 
   if (!study.length) {
-    if (!focus.length) return "Your plan is clear today. There is no unfinished task competing for your time, so keep your sleep window protected.";
+    if (!focus.length) return "";
     return `You have no study block scheduled today. ${focus[0].title} is the next deadline, with ${formatMinutes(focus[0].remainingMinutes)} still to place before ${formatDue(focus[0].dueAt, timezone)}.`;
   }
   const pressure = fixed.find((event) => ["sport", "extracurricular"].includes(event.category));

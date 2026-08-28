@@ -417,6 +417,7 @@
 
       .workspace.arcad-active { position: relative; max-width: none; min-height: 100vh; overflow: hidden; background: linear-gradient(180deg,var(--arcad-sky) 0,var(--arcad-sky-mid) 30%,var(--canvas) 72%); }
       .workspace.arcad-active > .topbar { position: relative; z-index: 2; }
+      .workspace.arcad-active #page-eyebrow, .workspace.arcad-active #page-title, .workspace.arcad-active .top-actions { display: none; }
       .arcad-sky { position: absolute; inset: 0 0 auto; z-index: 0; height: 34%; overflow: hidden; opacity: 0; pointer-events: none; transition: opacity 240ms ease; }
       .workspace.arcad-active .arcad-sky { opacity: 1; }
       .arcad-constellations, .arcad-stars { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -435,9 +436,9 @@
       :root[data-theme="vanta"] .button, :root[data-theme="vanta"] .send, :root[data-theme="vanta"] .message.user, :root[data-theme="vanta"] .subject-upload, :root[data-theme="vanta"] .suggestion, :root[data-theme="vanta"] .rail-button.active { outline: 1px solid #ffd928; background: #000; color: #ffd928; box-shadow: none; }
       :root[data-theme="vanta"] .brand-mark, :root[data-theme="vanta"] .mobile-brand { background: #000; box-shadow: inset 0 0 0 1px #ffd928; }
       :root[data-theme="vanta"] .brand-mark img, :root[data-theme="vanta"] .mobile-brand img { filter: grayscale(1) sepia(1) saturate(8) hue-rotate(355deg) brightness(1.18); }
-      .arcad-view { position: relative; z-index: 1; min-height: calc(100vh - 150px); }
-      .arcad-layout { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: clamp(24px,3vw,48px); align-items: start; max-width: 1420px; margin: 0 auto; }
-      .arcad-chat { display: flex; flex-direction: column; min-height: 650px; background: transparent; }
+      .arcad-view { position: relative; z-index: 1; display: flex; min-height: calc(100vh - 150px); }
+      .arcad-layout { display: grid; flex: 1; grid-template-columns: minmax(0,1fr) 360px; gap: clamp(24px,3vw,48px); align-items: stretch; max-width: 1420px; margin: 0 auto; }
+      .arcad-chat { display: flex; flex-direction: column; min-height: 0; background: transparent; }
       .arcad-chat-head, .arcad-context-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 4px 18px; }
       .mentor-status { display: inline-flex; align-items: center; gap: 7px; color: var(--green); font-size: 10px; font-weight: 720; }
       .mentor-status::before { width: 7px; height: 7px; border-radius: 50%; background: currentColor; content: ""; }
@@ -453,7 +454,7 @@
       .suggestions { display: flex; gap: 8px; overflow-x: auto; padding: 0 4px 13px; scrollbar-width: none; }
       .suggestion { flex: 0 0 auto; padding: 9px 12px; border: 0; border-radius: 999px; background: color-mix(in srgb,var(--arcad-glass) 82%,transparent); color: var(--muted); font-size: 9px; box-shadow: 0 6px 18px color-mix(in srgb,var(--arcad-glow) 52%,transparent); }
       .suggestion:hover { color: var(--accent-dark); transform: translateY(-1px); }
-      .composer { position: sticky; bottom: 16px; display: grid; grid-template-columns: minmax(0,1fr) 46px; gap: 9px; margin: 0 4px; padding: 7px 7px 7px 18px; border-radius: 999px; background: var(--arcad-glass); box-shadow: 0 18px 48px var(--arcad-glow); backdrop-filter: blur(22px) saturate(135%); transition: transform 180ms ease,box-shadow 180ms ease,background 180ms ease; }
+      .composer { display: grid; grid-template-columns: minmax(0,1fr) 46px; gap: 9px; margin: auto 4px 0; padding: 7px 7px 7px 18px; border-radius: 999px; background: var(--arcad-glass); box-shadow: 0 18px 48px var(--arcad-glow); backdrop-filter: blur(22px) saturate(135%); transition: transform 180ms ease,box-shadow 180ms ease,background 180ms ease; }
       .composer:focus-within { transform: translateY(-2px); background: color-mix(in srgb,var(--arcad-glass) 88%,white 12%); box-shadow: 0 22px 56px var(--arcad-glow),0 0 0 4px color-mix(in srgb,var(--accent) 16%,transparent); }
       .composer input { min-width: 0; height: 46px; padding: 0; border: 0; outline: 0; background: transparent; font-size: 12px; }
       .send { width: 46px; height: 46px; border: 0; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 16px; box-shadow: 0 8px 20px color-mix(in srgb,var(--accent) 34%,transparent); transition: transform 160ms ease,filter 160ms ease; }
@@ -555,9 +556,8 @@
         .workspace { padding: 20px 14px; }
         .workspace.arcad-active { padding-bottom: 88px; }
         .arcad-sky { height: 33%; }
-        .arcad-chat { min-height: 590px; }
+        .arcad-view { min-height: calc(100vh - 176px); }
         .messages { max-height: 54vh; }
-        .composer { bottom: 78px; }
         .context-list { grid-template-columns: 1fr; }
         .mobile-brand { display: block; width: 40px; height: 40px; }
         .topbar { margin-bottom: 20px; }
@@ -646,7 +646,7 @@
         </header>
 
         <section data-view-panel="today" aria-labelledby="page-title">
-          <article class="briefing-card">
+          <article class="briefing-card" id="briefing-card">
             <span class="briefing-mark" aria-hidden="true">✦</span>
             <div><span class="briefing-label">Arcadia briefing</span><p id="briefing">Preparing a briefing from your real plan…</p></div>
             <button class="button subtle" id="rebuild-button" type="button">Rebuild plan</button>
@@ -744,7 +744,6 @@
         <section class="arcad-view" data-view-panel="arcad" aria-labelledby="page-title" hidden>
           <div class="arcad-layout">
             <article class="arcad-chat">
-              <header class="arcad-chat-head"><div><h2 class="panel-title">Talk to Arcad</h2><p class="panel-subtitle">Your calm, context-aware planning partner.</p></div><span class="mentor-status" id="mentor-status">Ready</span></header>
               <div class="messages" id="messages" aria-live="polite"></div>
               <div class="proposals" id="proposals"></div>
               <div class="suggestions"><button class="suggestion" type="button" data-prompt="What should I do next?">What should I do next?</button><button class="suggestion" type="button" data-prompt="I didn't finish maths.">I missed some work</button><button class="suggestion" type="button" data-prompt="I need another hour for chemistry.">I need more time</button></div>
