@@ -143,8 +143,8 @@ export function chatStream(env, user, message, executionContext) {
         const saved = await saveMessage(env, user.id, "assistant", text);
         emit({ type: "message", message: saved, proposal, action: appliedAction?.action || null, schedule: appliedAction?.schedule || null });
       } catch (error) {
-        console.error("Arcadia Mentor failed", error?.message);
-        emit({ type: "error", message: error.message || "The Mentor is temporarily unavailable." });
+        console.error("Arcad failed", error?.message);
+        emit({ type: "error", message: error.message || "Arcad is temporarily unavailable." });
       } finally {
         controller.close();
       }
@@ -203,7 +203,7 @@ async function interpretLocalAction(env, userId, message, planner, events, execu
     const subject = inferSubject(title, planner.subjects);
     const task = await createTask(env, userId, {
       title: capitalise(title), subject, taskType: inferTaskType(title), dueAt,
-      estimatedMinutes: duration, priority: 2, notes: `Added through Arcadia Mentor: ${message}`
+      estimatedMinutes: duration, priority: 2, notes: `Added through Arcad: ${message}`
     });
     const schedule = await rebuildSchedule(env, userId, { from: new Date(), horizonDays: 21 });
     publishGenerated(executionContext, env, userId, schedule.created);
@@ -253,7 +253,7 @@ async function interpretLocalAction(env, userId, message, planner, events, execu
     const endTime = planner.preferences.bedtime || "22:30";
     const commitment = await createCommitment(env, userId, {
       title: "Busy tonight", category: "other", startDate: dateKeyInZone(new Date(), timezone),
-      weekday: null, startTime, endTime, recurrence: "none", notes: `Added through Arcadia Mentor: ${message}`
+      weekday: null, startTime, endTime, recurrence: "none", notes: `Added through Arcad: ${message}`
     });
     const schedule = await rebuildSchedule(env, userId, { from: new Date(), horizonDays: 21 });
     publishGenerated(executionContext, env, userId, schedule.created);
@@ -314,7 +314,7 @@ async function createResponse(env, user, input, context) {
     body: JSON.stringify({
       model: env.OPENAI_MODEL || MODEL, store: false, include: ["reasoning.encrypted_content"],
       reasoning: { effort: "low" }, max_output_tokens: 900, safety_identifier: await stableSafetyId(user.id),
-      instructions: `You are Arcadia Mentor, a calm planning and execution assistant for a student. Use Australian English. Be concise and specific. The supplied context is authoritative. Use tools for any request that changes tasks or the schedule; never merely claim a change. Additive task creation, extra time, and missed-session recovery may be applied through their validated tools. Moving existing blocks must use propose_schedule_changes and remain reviewable. Never alter Google-sourced or fixed commitment events. Never schedule across sleep, conflicts, or after a deadline. Context: ${JSON.stringify(context)}`,
+      instructions: `You are Arcad, Arcadia's calm planning and execution assistant for a student. Use Australian English. Be concise and specific. The supplied context is authoritative. Use tools for any request that changes tasks or the schedule; never merely claim a change. Additive task creation, extra time, and missed-session recovery may be applied through their validated tools. Moving existing blocks must use propose_schedule_changes and remain reviewable. Never alter Google-sourced or fixed commitment events. Never schedule across sleep, conflicts, or after a deadline. Context: ${JSON.stringify(context)}`,
       input, tools, parallel_tool_calls: false
     })
   });
@@ -338,7 +338,7 @@ async function validateOperations(env, userId, operations) {
     let existing = null;
     if (action === "update") {
       existing = await getEvent(env, userId, raw.eventId);
-      if (!existing || existing.source !== "arcadia" || !existing.editable || existing.commitmentId || existing.category !== "study") throw new Error("The Mentor can only move flexible Arcadia study events.");
+      if (!existing || existing.source !== "arcadia" || !existing.editable || existing.commitmentId || existing.category !== "study") throw new Error("Arcad can only move flexible Arcadia study events.");
     }
     const conflicts = await env.DB.prepare(`
       SELECT id FROM events WHERE user_id = ? AND status != 'cancelled' AND start_at < ? AND end_at > ?
@@ -409,7 +409,7 @@ function scoreMatch(item, terms) {
   return terms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
 }
 function publishGenerated(context, env, userId, events) {
-  const work = Promise.all(events.map((event) => publishArcadiaEvent(env, userId, event))).catch((error) => console.error("Mentor calendar publishing failed", error?.message));
+  const work = Promise.all(events.map((event) => publishArcadiaEvent(env, userId, event))).catch((error) => console.error("Arcad calendar publishing failed", error?.message));
   context?.waitUntil?.(work);
 }
 function extractOutputText(response) {

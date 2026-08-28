@@ -56,7 +56,8 @@ test("serves Today as the private Arcadia home without hardcoded demo work", asy
   const html = await response.text();
   assert.match(html, /Today’s plan/);
   assert.match(html, /Your focus today/);
-  assert.match(html, /Arcadia Mentor/);
+  assert.match(html, /Talk to Arcad/);
+  assert.doesNotMatch(html, /AI Mentor|Arcadia Mentor|Mentor context/);
   assert.doesNotMatch(html, /Economics lecture|Calculus problem set|Easy run/);
 });
 
@@ -64,7 +65,7 @@ test("uses all six Arcadia destinations in the intended navigation order", async
   const env = testEnv(); const response = await worker.fetch(new Request("https://arcadia.test/", { headers: await authHeaders(env) }), env, {});
   const html = await response.text();
   const navigation = html.slice(html.indexOf('<nav class="rail-nav"'), html.indexOf('</nav>'));
-  assert.ok(navigation.indexOf('data-view="mentor"') < navigation.indexOf('data-view="today"'));
+  assert.ok(navigation.indexOf('data-view="arcad"') < navigation.indexOf('data-view="today"'));
   assert.ok(navigation.indexOf('data-view="today"') < navigation.indexOf('data-view="schedule"'));
   assert.ok(navigation.indexOf('data-view="schedule"') < navigation.indexOf('data-view="study-tracker"'));
   assert.ok(navigation.indexOf('data-view="study-tracker"') < navigation.indexOf('data-view="analytics"'));
@@ -77,7 +78,7 @@ test("uses all six Arcadia destinations in the intended navigation order", async
   assert.match(html, /data-view-panel="study-tracker"[^>]*hidden/);
   assert.match(html, /data-view-panel="analytics"[^>]*hidden/);
   assert.match(html, /data-view-panel="study-group"[^>]*hidden/);
-  assert.match(html, /data-view-panel="mentor"[^>]*hidden/);
+  assert.match(html, /data-view-panel="arcad"[^>]*hidden/);
   assert.match(html, /Create group · Coming soon/);
   assert.match(html, /Join group · Coming soon/);
   assert.match(html, /id="onboarding-dialog"/);
@@ -87,7 +88,8 @@ test("defaults client navigation to Today and uses persisted dashboard data", as
   const response = await worker.fetch(new Request("https://arcadia.test/dashboard.js"), {}, {});
   assert.equal(response.status, 200);
   const script = await response.text();
-  assert.match(script, /\['today', 'schedule', 'study-tracker', 'analytics', 'study-group', 'mentor'\]/);
+  assert.match(script, /\['today', 'schedule', 'study-tracker', 'analytics', 'study-group', 'arcad'\]/);
+  assert.match(script, /requested === 'mentor'[\s\S]*#arcad/);
   assert.match(script, /#today/);
   assert.match(script, /\/api\/dashboard/);
   assert.match(script, /\/api\/analytics\?period=/);
@@ -136,11 +138,30 @@ test("offers nine persisted themes with restrained light and dark palettes", asy
     for (const colour of colours) assert.ok(html.includes(colour), `${theme} should include ${colour}`);
   }
   assert.match(html, /:root\[data-theme="midnight"\]/);
+  assert.equal((html.match(/--arcad-sky:/g) || []).length, 9);
+  for (const token of ["--arcad-sky", "--arcad-sky-mid", "--arcad-star", "--arcad-glass", "--arcad-user", "--arcad-line", "--arcad-glow"]) assert.match(html, new RegExp(token));
   assert.doesNotMatch(html, /id="theme-toggle"/);
   assert.match(html, /<select id="theme-select">[\s\S]*value="light"[\s\S]*value="dawn"[\s\S]*value="rose"[\s\S]*value="ocean"[\s\S]*value="sage"[\s\S]*value="lavender"[\s\S]*value="dusk"[\s\S]*value="dark"[\s\S]*value="midnight"/);
 
   const script = await (await worker.fetch(new Request("https://arcadia.test/dashboard.js"), {}, {})).text();
   for (const [theme, [canvas]] of Object.entries(palettes)) assert.match(script, new RegExp(`${theme}: '${canvas}'`));
+});
+
+test("ships the borderless, accessible Arcad sky and pill composer", async () => {
+  const env = testEnv(); const page = await worker.fetch(new Request("https://arcadia.test/", { headers: await authHeaders(env, "arcad-ui") }), env, {});
+  const html = await page.text();
+  assert.match(html, /id="arcad-sky"[^>]*aria-hidden="true"/);
+  assert.match(html, /id="arcad-constellations"/);
+  assert.match(html, /class="composer"[\s\S]*Message Arcad/);
+  assert.match(html, /\.composer \{[^}]*border-radius: 999px/);
+  assert.match(html, /\.arcad-star\.four/);
+  assert.match(html, /\.arcad-star\.six/);
+  assert.match(html, /\.arcad-star\.halo/);
+  assert.match(html, /@media \(prefers-reduced-motion: reduce\)[^{]*\{[^}]*animation: none !important/);
+  const script = await (await worker.fetch(new Request("https://arcadia.test/dashboard.js"), {}, {})).text();
+  assert.match(script, /const count = mobile \? 68 : 116/);
+  assert.match(script, /arcadConstellationSets/);
+  assert.match(script, /Math\.pow\(random\(\), 1\.65\)/);
 });
 
 test("upgrades the legacy theme constraint without losing preferences", async () => {
@@ -369,7 +390,7 @@ test("keeps weekly analytics as the API default and rejects invalid filters", as
   assert.match((await badDate.json()).error, /valid analytics date/);
 });
 
-test("applies an approved Mentor move exactly once", async () => {
+test("applies an approved Arcad move exactly once", async () => {
   const env = { DB: new TestD1() };
   await ensureDatabase(env);
   await upsertProfile(env, { id: "planner", email: "planner@example.com", name: "Planner" });
@@ -383,7 +404,7 @@ test("applies an approved Mentor move exactly once", async () => {
   assert.equal(events[0].category, "study");
 });
 
-test("required student journey persists, schedules, completes, misses, adapts and accepts a Mentor task action", async () => {
+test("required student journey persists, schedules, completes, misses, adapts and accepts an Arcad task action", async () => {
   const env = testEnv();
   const userId = "journey-student";
   const englishDue = futureWeekday(4, 7);
@@ -461,9 +482,9 @@ test("required student journey persists, schedules, completes, misses, adapts an
   assert.ok(payloads.some((payload) => payload.type === "message" && payload.action?.intent === "CREATE_TASK"));
   const tasks = await listTasks(env, userId);
   const chemistry = tasks.find((task) => /chemistry homework/i.test(task.title));
-  assert.ok(chemistry, "Mentor should persist the structured task action");
+  assert.ok(chemistry, "Arcad should persist the structured task action");
   const updated = await listEvents(env, userId, new Date().toISOString(), new Date(Date.now() + 22 * 86_400_000).toISOString());
-  assert.ok(updated.some((event) => event.taskId === chemistry.id), "Mentor-created work should be scheduled in the shared plan");
+  assert.ok(updated.some((event) => event.taskId === chemistry.id), "Arcad-created work should be scheduled in the shared plan");
   assertNoOverlaps(updated);
 
   const movedTraining = await worker.fetch(new Request("https://arcadia.test/api/chat", {

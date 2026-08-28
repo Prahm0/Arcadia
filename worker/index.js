@@ -212,7 +212,7 @@ async function routeApi(request, env, context, url, authenticatedUser, csrfToken
     const moved = schedule.created.find((event) => event.taskId === original.taskId);
     const message = moved
       ? `You missed ${original.title}, so I moved ${minutesBetween(original.startAt, original.endAt)} minutes to ${formatMove(moved.startAt)}. The rest of your plan was checked for conflicts.`
-      : `You missed ${original.title}. The work still remains, but there is no safe opening before its deadline. Review the task with your Mentor.`;
+      : `You missed ${original.title}. The work still remains, but there is no safe opening before its deadline. Review the task with Arcad.`;
     return json({ outcome, schedule: scheduleSummary(schedule), message });
   }
 

@@ -53,6 +53,7 @@ const elements = {
   messages: document.querySelector('#messages'), proposals: document.querySelector('#proposals'),
   mentorStatus: document.querySelector('#mentor-status'), mentorContext: document.querySelector('#mentor-context'),
   composer: document.querySelector('#composer'), chatInput: document.querySelector('#chat-input'), send: document.querySelector('#send-button'),
+  arcadSky: document.querySelector('#arcad-sky'), arcadStars: document.querySelector('#arcad-stars'), arcadConstellations: document.querySelector('#arcad-constellations'),
   onboardingDialog: document.querySelector('#onboarding-dialog'), onboardingForm: document.querySelector('#onboarding-form'),
   onboardingClose: document.querySelector('#onboarding-close'), onboardingError: document.querySelector('#onboarding-error'),
   subjectRows: document.querySelector('#subject-rows'), taskRows: document.querySelector('#task-rows'),
@@ -69,6 +70,7 @@ const elements = {
 document.documentElement.dataset.theme = preferredTheme();
 bindControls();
 renderIcons();
+requestAnimationFrame(createArcadSky);
 activateView(viewFromHash());
 loadDashboard();
 
@@ -84,6 +86,8 @@ function bindControls() {
   });
   elements.viewButtons.forEach((button) => button.addEventListener('click', () => { location.hash = button.dataset.view; }));
   window.addEventListener('hashchange', () => activateView(viewFromHash()));
+  let arcadResizeTimer;
+  window.addEventListener('resize', () => { clearTimeout(arcadResizeTimer); arcadResizeTimer = setTimeout(createArcadSky, 160); });
   elements.avatar.addEventListener('click', (event) => { event.stopPropagation(); toggleAccountMenu(); });
   document.querySelector('#account-settings-button').addEventListener('click', () => { closeAccountMenu(); elements.settingsDialog.showModal(); });
   document.querySelector('#account-sign-out-button').addEventListener('click', () => signOut(false));
@@ -149,20 +153,23 @@ function bindControls() {
 
 function viewFromHash() {
   const requested = location.hash.slice(1);
-  if (['today', 'schedule', 'study-tracker', 'analytics', 'study-group', 'mentor'].includes(requested)) return requested;
+  if (requested === 'mentor') { history.replaceState({}, '', `${location.pathname}${location.search}#arcad`); return 'arcad'; }
+  if (['today', 'schedule', 'study-tracker', 'analytics', 'study-group', 'arcad'].includes(requested)) return requested;
   history.replaceState({}, '', `${location.pathname}${location.search}#today`);
   return 'today';
 }
 
 function activateView(view) {
-  state.activeView = ['today', 'schedule', 'study-tracker', 'analytics', 'study-group', 'mentor'].includes(view) ? view : 'today';
+  state.activeView = ['today', 'schedule', 'study-tracker', 'analytics', 'study-group', 'arcad'].includes(view) ? view : 'today';
+  elements.workspace.classList.toggle('arcad-active', state.activeView === 'arcad');
+  if (state.activeView === 'arcad') requestAnimationFrame(drawArcadConstellations);
   elements.views.forEach((panel) => { panel.hidden = panel.dataset.viewPanel !== state.activeView; });
   elements.viewButtons.forEach((button) => {
     const active = button.dataset.view === state.activeView;
     button.classList.toggle('active', active);
     if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   });
-  const titles = { today: 'Today', schedule: 'Schedule', 'study-tracker': 'Study Tracker', analytics: 'Analytics', 'study-group': 'Study Group', mentor: 'AI Mentor' };
+  const titles = { today: 'Today', schedule: 'Schedule', 'study-tracker': 'Study Tracker', analytics: 'Analytics', 'study-group': 'Study Group', arcad: 'Arcad' };
   elements.pageTitle.textContent = titles[state.activeView];
   document.title = `${titles[state.activeView]} · Arcadia`;
   updateHeader();
@@ -226,7 +233,7 @@ function updateHeader() {
     elements.pageTitle.textContent = 'Study Group';
   } else {
     elements.pageEyebrow.textContent = 'Plan, recover, adapt';
-    elements.pageTitle.textContent = 'AI Mentor';
+    elements.pageTitle.textContent = 'Arcad';
   }
 }
 
@@ -486,7 +493,7 @@ function renderAnalytics({ period, range, analytics }) {
   }
 
   const summary = analytics.focusedMinutes
-    ? `You completed <strong>${formatDuration(analytics.focusedMinutes)}</strong> of focused study with a <strong>${analytics.completionRate}% completion rate</strong>. ${analytics.missedCount ? `${analytics.missedCount} missed session${analytics.missedCount === 1 ? '' : 's'} can be replanned with your Mentor.` : 'Nothing was marked missed in this period.'}`
+    ? `You completed <strong>${formatDuration(analytics.focusedMinutes)}</strong> of focused study with a <strong>${analytics.completionRate}% completion rate</strong>. ${analytics.missedCount ? `${analytics.missedCount} missed session${analytics.missedCount === 1 ? '' : 's'} can be replanned with Arcad.` : 'Nothing was marked missed in this period.'}`
     : `There is no completed study in this period yet. You still have <strong>${formatDuration(analytics.capacityMinutes)}</strong> of unplanned capacity available.`;
   elements.analyticsNote.innerHTML = `<p>${summary}</p>`;
 }
@@ -890,9 +897,11 @@ async function sendChat(event) {
   appendMessage('user', message);
   const thinking = appendMessage('assistant', 'Reviewing your real plan…');
   elements.send.disabled = true;
+  elements.composer.classList.add('sending');
+  setIcon(elements.send, 'loader-circle');
   try {
     const response = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message }) });
-    if (!response.ok) throw new Error((await response.json()).error || 'The Mentor is unavailable.');
+    if (!response.ok) throw new Error((await response.json()).error || 'Arcad is unavailable.');
     const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let changed = false;
     while (true) {
       const { value, done } = await reader.read();
@@ -907,7 +916,7 @@ async function sendChat(event) {
     }
     if (changed) await loadDashboard();
   } catch (error) { thinking.textContent = error.message; }
-  finally { state.saving = false; elements.send.disabled = false; elements.chatInput.focus(); }
+  finally { state.saving = false; elements.send.disabled = false; elements.composer.classList.remove('sending'); setIcon(elements.send, 'arrow-up'); elements.chatInput.focus(); }
 }
 
 async function handleProposal(id, action) {
@@ -1102,6 +1111,73 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = safeTheme;
   try { localStorage.setItem('arcadia-theme', safeTheme); } catch {}
   updateThemeControls();
+  requestAnimationFrame(drawArcadConstellations);
+}
+
+const arcadConstellationSets = {
+  desktop: [
+    [[.08,.38],[.13,.26],[.18,.34],[.23,.19],[.28,.30]],
+    [[.42,.14],[.47,.25],[.52,.17],[.57,.30],[.62,.22],[.67,.36]],
+    [[.75,.20],[.80,.09],[.84,.21],[.89,.15],[.94,.29]]
+  ],
+  mobile: [
+    [[.08,.39],[.18,.25],[.29,.34],[.40,.18],[.50,.30]],
+    [[.59,.15],[.68,.27],[.77,.18],[.86,.31],[.94,.21]]
+  ]
+};
+
+function createArcadSky() {
+  if (!elements.arcadStars || !elements.arcadConstellations) return;
+  const mobile = matchMedia('(max-width: 720px)').matches;
+  const random = seededRandom(mobile ? 0xA7CAD02 : 0xA7CAD01);
+  const count = mobile ? 68 : 116;
+  const kinds = ['dot', 'dot', 'glow', 'four', 'six', 'halo'];
+  elements.arcadStars.innerHTML = '';
+  for (let index = 0; index < count; index += 1) {
+    const star = document.createElement('i');
+    const kind = kinds[Math.floor(random() * kinds.length)];
+    const sizeRoll = random();
+    const size = sizeRoll > .94 ? 7 + random() * 3 : sizeRoll > .72 ? 3 + random() * 3 : 1 + random() * 2.2;
+    const x = 1.5 + random() * 97;
+    const y = Math.pow(random(), 1.65) * 95;
+    star.className = `arcad-star ${kind}`;
+    star.style.cssText = `left:${x.toFixed(2)}%;top:${y.toFixed(2)}%;--star-size:${size.toFixed(2)}px;--star-opacity:${(.25 + random() * .65).toFixed(2)};--star-speed:${(4.8 + random() * 5).toFixed(2)}s;--star-delay:-${(random() * 7).toFixed(2)}s;--star-rotate:${kind === 'six' ? '30deg' : '0deg'}`;
+    elements.arcadStars.append(star);
+  }
+  const sets = arcadConstellationSets[mobile ? 'mobile' : 'desktop'];
+  sets.flat().forEach(([x,y], index) => {
+    const anchor = document.createElement('i');
+    anchor.className = 'arcad-star constellation';
+    anchor.style.cssText = `left:${x * 100}%;top:${y * 100}%;--star-size:${index % 4 === 0 ? 4.5 : 3}px;--star-opacity:.78;--star-speed:${6 + index % 5}s;--star-delay:-${index % 7}s`;
+    elements.arcadStars.append(anchor);
+  });
+  drawArcadConstellations();
+}
+
+function drawArcadConstellations() {
+  const canvas = elements.arcadConstellations;
+  if (!canvas) return;
+  const bounds = canvas.getBoundingClientRect();
+  if (!bounds.width || !bounds.height) return;
+  const density = Math.min(devicePixelRatio || 1, 2);
+  canvas.width = Math.round(bounds.width * density);
+  canvas.height = Math.round(bounds.height * density);
+  const context = canvas.getContext('2d');
+  context.setTransform(density, 0, 0, density, 0, 0);
+  context.clearRect(0, 0, bounds.width, bounds.height);
+  context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--arcad-line').trim();
+  context.lineWidth = 1;
+  const sets = arcadConstellationSets[matchMedia('(max-width: 720px)').matches ? 'mobile' : 'desktop'];
+  sets.forEach((points) => {
+    context.beginPath();
+    points.forEach(([x,y], index) => { const px = x * bounds.width; const py = y * bounds.height; if (index === 0) context.moveTo(px,py); else context.lineTo(px,py); });
+    context.stroke();
+  });
+}
+
+function seededRandom(seed) {
+  let value = seed >>> 0;
+  return () => { value += 0x6D2B79F5; let next = value; next = Math.imul(next ^ next >>> 15, next | 1); next ^= next + Math.imul(next ^ next >>> 7, next | 61); return ((next ^ next >>> 14) >>> 0) / 4294967296; };
 }
 async function saveTheme(theme) {
   applyTheme(theme);
