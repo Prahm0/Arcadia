@@ -32,8 +32,22 @@ class DevD1 {
   }
 }
 
+class DevR2 {
+  constructor() { this.objects = new Map(); }
+  async put(key, value, options = {}) {
+    const bytes = value instanceof Uint8Array ? new Uint8Array(value) : new Uint8Array(await new Response(value).arrayBuffer());
+    this.objects.set(key, { bytes, httpMetadata: options.httpMetadata || {}, customMetadata: options.customMetadata || {} });
+  }
+  async get(key) {
+    const object = this.objects.get(key);
+    return object ? { body: object.bytes, size: object.bytes.byteLength, httpMetadata: object.httpMetadata, customMetadata: object.customMetadata } : null;
+  }
+  async delete(key) { this.objects.delete(key); }
+}
+
 function arcadiaDevWorker() {
   const DB = new DevD1();
+  const FILES = new DevR2();
   return {
     name: "arcadia-dev-worker",
     apply: "serve",
@@ -50,7 +64,7 @@ function arcadiaDevWorker() {
           const module = await server.ssrLoadModule("/worker/index.js");
           const pending = [];
           const response = await module.default.fetch(request, {
-            DB,
+            DB, FILES,
             OPENAI_API_KEY: process.env.OPENAI_API_KEY,
             OPENAI_MODEL: process.env.OPENAI_MODEL,
             GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,

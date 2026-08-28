@@ -2,7 +2,7 @@ const PASSWORD_ITERATIONS = 600_000;
 const SESSION_DAYS = 30;
 const SESSION_ROTATE_MS = 24 * 60 * 60 * 1000;
 const encoder = new TextEncoder();
-const THEMES = ["light", "dawn", "rose", "ocean", "sage", "lavender", "dusk", "dark", "midnight"];
+const THEMES = ["light", "dawn", "rose", "ocean", "sage", "lavender", "dusk", "dark", "midnight", "vanta"];
 
 export async function handleAuthRoute(request, env, url) {
   const method = request.method.toUpperCase();
@@ -257,7 +257,11 @@ async function accountView(env, userId) {
 
 async function deleteAccountData(env, userId) {
   const account = await getAccount(env, userId); const identityHash = account?.emailNormalized ? await sha256(account.emailNormalized) : null;
-  const tables = ["oauth_states", "google_calendars", "google_connections", "proposals", "chat_messages", "activity", "study_sessions", "events", "tasks", "commitments", "subjects", "user_preferences", "auth_tokens", "auth_sessions", "accounts", "profiles"];
+  if (env.FILES) {
+    const stored = await env.DB.prepare("SELECT storage_key AS storageKey FROM subject_files WHERE user_id = ?").bind(userId).all();
+    await Promise.all((stored.results || []).map((file) => env.FILES.delete(file.storageKey)));
+  }
+  const tables = ["oauth_states", "google_calendars", "google_connections", "proposals", "chat_messages", "subject_files", "subject_contexts", "activity", "study_sessions", "events", "tasks", "commitments", "subjects", "user_preferences", "auth_tokens", "auth_sessions", "accounts", "profiles"];
   const statements = tables.map((table) => env.DB.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(userId));
   if (identityHash) statements.unshift(env.DB.prepare("DELETE FROM auth_rate_limits WHERE identity_hash = ?").bind(identityHash));
   await env.DB.batch(statements);

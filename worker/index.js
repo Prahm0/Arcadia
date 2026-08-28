@@ -10,9 +10,10 @@ import favicon from "../favicon.png?inline";
 import appleTouchIcon from "../apple-touch-icon.png?inline";
 import socialPreview from "../og-v3.png?inline";
 import {
-  completeEvent, createEvent, createTask, deleteEvent, ensureDatabase, getAnalytics, getEvent,
-  getPlannerData, listActivity, listEvents, listMessages, listPendingProposals, listStudySessions, markEventOutcome,
-  saveOnboarding, saveStudySessions, clearStudySessions, updateEvent, weekRange
+  completeEvent, createEvent, createSubjectFileMetadata, createTask, deleteEvent, deleteSubjectFileMetadata, ensureDatabase,
+  getAnalytics, getEvent, getPlannerData, getSubjectFile, listActivity, listEvents, listMessages, listPendingProposals,
+  listStudySessions, listSubjectContexts, markEventOutcome, saveOnboarding, saveStudySessions, saveSubjectContext,
+  clearStudySessions, updateEvent, weekRange
 } from "./db.js";
 import {
   beginGoogleOAuth, disconnectGoogle, finishGoogleOAuth, getGoogleStatus, publishArcadiaEvent,
@@ -33,6 +34,7 @@ const htmlHeaders = {
   "x-content-type-options": "nosniff"
 };
 const jsonHeaders = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
+const MAX_SUBJECT_FILE_BYTES = 10 * 1024 * 1024;
 const imageAssets = new Map([
   ["/arcadia-logo.png", arcadiaLogo], ["/arcadia-mark.png", arcadiaMark],
   ["/arcadia-mark-transparent.png", arcadiaMarkTransparent], ["/favicon.png", favicon],
@@ -93,13 +95,14 @@ async function routeApi(request, env, context, url, authenticatedUser, csrfToken
   if (method === "GET" && path === "/api/dashboard") {
     const range = weekRange(url.searchParams.get("date") || new Date());
     const planner = await getPlannerData(env, authenticatedUser.id);
-    const [events, analytics, google, messages, proposals, activity] = await Promise.all([
+    const [events, analytics, google, messages, proposals, activity, subjectContexts] = await Promise.all([
       listEvents(env, authenticatedUser.id, range.start, range.end),
       getAnalytics(env, authenticatedUser.id, range.start, range.end),
       getGoogleStatus(env, authenticatedUser.id),
       listMessages(env, authenticatedUser.id, 24),
       listPendingProposals(env, authenticatedUser.id),
-      listActivity(env, authenticatedUser.id, { start: new Date(Date.now() - 14 * 86_400_000).toISOString(), limit: 30 })
+      listActivity(env, authenticatedUser.id, { start: new Date(Date.now() - 14 * 86_400_000).toISOString(), limit: 30 }),
+      listSubjectContexts(env, authenticatedUser.id)
     ]);
     if (google.connected && (!google.lastSyncAt || Date.now() - Date.parse(google.lastSyncAt) > 5 * 60 * 1000)) {
       context?.waitUntil?.(syncGoogleCalendars(env, authenticatedUser.id).catch((error) => console.error("Google sync failed", error?.message)));
@@ -113,7 +116,7 @@ async function routeApi(request, env, context, url, authenticatedUser, csrfToken
     };
     return json({
       user, profile: planner.profile, preferences: planner.preferences, subjects: planner.subjects,
-      tasks: planner.tasks, commitments: planner.commitments, range, events, analytics, activity,
+      tasks: planner.tasks, commitments: planner.commitments, range, events, analytics, activity, subjectContexts,
       focusTasks: focusTasks(planner.tasks),
       briefing: planner.profile?.onboardingComplete ? buildBriefing({ ...planner, events, now: new Date() }) : null,
       google,
@@ -169,6 +172,58 @@ async function routeApi(request, env, context, url, authenticatedUser, csrfToken
   }
   if (method === "DELETE" && path === "/api/study-sessions") {
     await clearStudySessions(env, authenticatedUser.id); return json({ ok: true });
+  }
+
+  const subjectContextMatch = path.match(/^\/api\/subjects\/([^/]+)\/context$/);
+  if (subjectContextMatch && method === "PATCH") {
+    const subjectId = decodeURIComponent(subjectContextMatch[1]); const body = await readJson(request);
+    const saved = await saveSubjectContext(env, authenticatedUser.id, subjectId, {
+      notes: text(body.notes, 4000), includeInArcad: body.includeInArcad !== false
+    });
+    if (!saved) return json({ error: "Subject not found." }, 404);
+    return json({ context: saved });
+  }
+
+  const subjectFilesMatch = path.match(/^\/api\/subjects\/([^/]+)\/files$/);
+  if (subjectFilesMatch && method === "POST") {
+    if (!env.FILES) throw new Error("Arcadia file storage is not configured.");
+    const subjectId = decodeURIComponent(subjectFilesMatch[1]);
+    const contexts = await listSubjectContexts(env, authenticatedUser.id);
+    if (!contexts.some((item) => item.subjectId === subjectId)) return json({ error: "Subject not found." }, 404);
+    const declaredSize = Number(request.headers.get("content-length") || 0);
+    if (declaredSize > MAX_SUBJECT_FILE_BYTES) return json({ error: "Choose a file no larger than 10 MB." }, 413);
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    if (!bytes.byteLength || bytes.byteLength > MAX_SUBJECT_FILE_BYTES) return json({ error: "Choose a file between 1 byte and 10 MB." }, 413);
+    const filename = safeFilename(url.searchParams.get("filename") || request.headers.get("x-file-name"));
+    const contentType = text(request.headers.get("content-type"), 120) || "application/octet-stream";
+    const storageKey = `${authenticatedUser.id}/${subjectId}/${crypto.randomUUID()}`;
+    const textExcerpt = extractTextExcerpt(bytes, filename, contentType);
+    await env.FILES.put(storageKey, bytes, { httpMetadata: { contentType }, customMetadata: { userId: authenticatedUser.id, subjectId } });
+    try {
+      const file = await createSubjectFileMetadata(env, authenticatedUser.id, subjectId, { filename, contentType, sizeBytes: bytes.byteLength, storageKey, textExcerpt });
+      return json({ file }, 201);
+    } catch (error) { await env.FILES.delete(storageKey); throw error; }
+  }
+
+  const subjectFileMatch = path.match(/^\/api\/subject-files\/([^/]+)$/);
+  if (subjectFileMatch && method === "GET") {
+    if (!env.FILES) throw new Error("Arcadia file storage is not configured.");
+    const file = await getSubjectFile(env, authenticatedUser.id, decodeURIComponent(subjectFileMatch[1]));
+    if (!file) return json({ error: "File not found." }, 404);
+    const object = await env.FILES.get(file.storageKey);
+    if (!object) return json({ error: "File content is unavailable." }, 404);
+    return new Response(object.body, { headers: {
+      "content-type": file.contentType, "content-length": String(file.sizeBytes), "cache-control": "private, no-store",
+      "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`, "x-content-type-options": "nosniff"
+    } });
+  }
+  if (subjectFileMatch && method === "DELETE") {
+    if (!env.FILES) throw new Error("Arcadia file storage is not configured.");
+    const file = await getSubjectFile(env, authenticatedUser.id, decodeURIComponent(subjectFileMatch[1]));
+    if (!file) return json({ error: "File not found." }, 404);
+    await env.FILES.delete(file.storageKey);
+    await deleteSubjectFileMetadata(env, authenticatedUser.id, file.id);
+    return json({ ok: true });
   }
 
   if (path === "/api/events" && method === "POST") {
@@ -423,6 +478,16 @@ function decodeDataUrl(dataUrl) {
   return bytes;
 }
 function text(value, max) { return String(value || "").trim().slice(0, max); }
+function safeFilename(value) {
+  const clean = String(value || "file").replace(/[\u0000-\u001f\u007f\\/]/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+  return clean || "file";
+}
+function extractTextExcerpt(bytes, filename, contentType) {
+  const extension = filename.includes(".") ? filename.split(".").pop().toLowerCase() : "";
+  const textLike = contentType.startsWith("text/") || ["application/json", "application/xml", "application/javascript", "application/x-yaml"].includes(contentType.split(";")[0]) || ["txt", "md", "csv", "json", "xml", "yaml", "yml", "js", "ts", "css", "html"].includes(extension);
+  if (!textLike || bytes.byteLength > 512 * 1024) return "";
+  return new TextDecoder("utf-8", { fatal: false }).decode(bytes).replace(/\u0000/g, "").slice(0, 12000);
+}
 function validTime(value) { const clean = String(value || ""); return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(clean) ? clean : null; }
 function validColor(value) { const clean = String(value || ""); return /^#[0-9a-f]{6}$/i.test(clean) ? clean : null; }
 function priority(value) { const number = Number(value); return [1, 2, 3].includes(number) ? number : 2; }

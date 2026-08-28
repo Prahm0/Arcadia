@@ -27,8 +27,15 @@ class TestD1 {
   }
 }
 
+class TestR2 {
+  constructor() { this.objects = new Map(); }
+  async put(key, value, options = {}) { this.objects.set(key, { bytes: new Uint8Array(value), options }); }
+  async get(key) { const item = this.objects.get(key); return item ? { body: item.bytes, size: item.bytes.byteLength, httpMetadata: item.options.httpMetadata || {} } : null; }
+  async delete(key) { this.objects.delete(key); }
+}
+
 const sessionCache = new WeakMap();
-const testEnv = () => ({ DB: new TestD1(), AUTH_TEST_MODE: "true", AUTH_PBKDF2_ITERATIONS: "1" });
+const testEnv = () => ({ DB: new TestD1(), FILES: new TestR2(), AUTH_TEST_MODE: "true", AUTH_PBKDF2_ITERATIONS: "1" });
 async function authHeaders(env, id = "owner", json = false) {
   let users = sessionCache.get(env); if (!users) { users = new Map(); sessionCache.set(env, users); }
   if (!users.has(id)) {
@@ -94,7 +101,7 @@ test("defaults client navigation to Today and uses persisted dashboard data", as
   assert.match(script, /\/api\/dashboard/);
   assert.match(script, /\/api\/analytics\?period=/);
   assert.doesNotMatch(script, /Economics lecture|Calculus problem set/);
-  assert.match(script, /\['light', 'dawn', 'rose', 'ocean', 'sage', 'lavender', 'dusk', 'dark', 'midnight'\]/);
+  assert.match(script, /\['light', 'dawn', 'rose', 'ocean', 'sage', 'lavender', 'dusk', 'dark', 'midnight', 'vanta'\]/);
 });
 
 test("ships responsive day, week, and month calendar controls", async () => {
@@ -122,7 +129,7 @@ test("includes subject-aware focus, stopwatch, rest, and custom tracker tools", 
   assert.match(script, /setInterval\(tickTracker, 250\)/);
 });
 
-test("offers nine persisted themes with restrained light and dark palettes", async () => {
+test("offers ten persisted themes including Vanta Black", async () => {
   const env = testEnv(); const page = await worker.fetch(new Request("https://arcadia.test/", { headers: await authHeaders(env) }), env, {});
   const html = await page.text();
   const palettes = {
@@ -138,10 +145,11 @@ test("offers nine persisted themes with restrained light and dark palettes", asy
     for (const colour of colours) assert.ok(html.includes(colour), `${theme} should include ${colour}`);
   }
   assert.match(html, /:root\[data-theme="midnight"\]/);
-  assert.equal((html.match(/--arcad-sky:/g) || []).length, 9);
+  assert.match(html, /:root\[data-theme="vanta"\][\s\S]*--canvas: #000[\s\S]*--accent: #ffd928/);
+  assert.equal((html.match(/--arcad-sky:/g) || []).length, 10);
   for (const token of ["--arcad-sky", "--arcad-sky-mid", "--arcad-star", "--arcad-glass", "--arcad-user", "--arcad-line", "--arcad-glow"]) assert.match(html, new RegExp(token));
   assert.doesNotMatch(html, /id="theme-toggle"/);
-  assert.match(html, /<select id="theme-select">[\s\S]*value="light"[\s\S]*value="dawn"[\s\S]*value="rose"[\s\S]*value="ocean"[\s\S]*value="sage"[\s\S]*value="lavender"[\s\S]*value="dusk"[\s\S]*value="dark"[\s\S]*value="midnight"/);
+  assert.match(html, /<select id="theme-select">[\s\S]*value="light"[\s\S]*value="dawn"[\s\S]*value="rose"[\s\S]*value="ocean"[\s\S]*value="sage"[\s\S]*value="lavender"[\s\S]*value="dusk"[\s\S]*value="dark"[\s\S]*value="midnight"[\s\S]*value="vanta"/);
 
   const script = await (await worker.fetch(new Request("https://arcadia.test/dashboard.js"), {}, {})).text();
   for (const [theme, [canvas]] of Object.entries(palettes)) assert.match(script, new RegExp(`${theme}: '${canvas}'`));
@@ -159,9 +167,42 @@ test("ships the borderless, accessible Arcad sky and pill composer", async () =>
   assert.match(html, /\.arcad-star\.halo/);
   assert.match(html, /@media \(prefers-reduced-motion: reduce\)[^{]*\{[^}]*animation: none !important/);
   const script = await (await worker.fetch(new Request("https://arcadia.test/dashboard.js"), {}, {})).text();
-  assert.match(script, /const count = mobile \? 68 : 116/);
+  assert.match(script, /const count = mobile \? 120 : 210/);
   assert.match(script, /arcadConstellationSets/);
+  for (const constellation of ["ORION", "CRUX", "CASSIOPEIA"]) assert.match(script, new RegExp(constellation));
   assert.match(script, /Math\.pow\(random\(\), 1\.65\)/);
+});
+
+test("persists private subject knowledge, text excerpts, downloads, and deletion", async () => {
+  const env = testEnv(); const userId = "knowledge-owner"; const headers = await authHeaders(env, userId, true);
+  const subjectId = "subject-knowledge"; const now = new Date().toISOString();
+  await env.DB.prepare("INSERT INTO subjects (id, user_id, name, color, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(subjectId, userId, "Biology", "#609480", 2, now, now).run();
+
+  const saved = await worker.fetch(new Request(`https://arcadia.test/api/subjects/${subjectId}/context`, {
+    method: "PATCH", headers, body: JSON.stringify({ notes: "Prioritise cell division terminology.", includeInArcad: true })
+  }), env, {});
+  assert.equal(saved.status, 200, await saved.text());
+
+  const uploaded = await worker.fetch(new Request(`https://arcadia.test/api/subjects/${subjectId}/files?filename=${encodeURIComponent("revision notes.txt")}`, {
+    method: "POST", headers: { ...headers, "content-type": "text/plain" }, body: "Mitosis creates two genetically identical daughter cells."
+  }), env, {});
+  const uploadedText = await uploaded.text(); assert.equal(uploaded.status, 201, uploadedText); const file = JSON.parse(uploadedText).file;
+  assert.equal(env.FILES.objects.size, 1);
+
+  const dashboard = await worker.fetch(new Request("https://arcadia.test/api/dashboard", { headers }), env, {}); const data = await dashboard.json();
+  const knowledge = data.subjectContexts.find((item) => item.subjectId === subjectId);
+  assert.equal(knowledge.notes, "Prioritise cell division terminology."); assert.equal(knowledge.includeInArcad, true);
+  assert.match(knowledge.files[0].textExcerpt, /genetically identical/);
+
+  const download = await worker.fetch(new Request(`https://arcadia.test/api/subject-files/${file.id}`, { headers }), env, {});
+  assert.equal(download.status, 200); assert.equal(await download.text(), "Mitosis creates two genetically identical daughter cells.");
+  const intruderHeaders = await authHeaders(env, "knowledge-intruder", true);
+  const denied = await worker.fetch(new Request(`https://arcadia.test/api/subject-files/${file.id}`, { headers: intruderHeaders }), env, {});
+  assert.equal(denied.status, 404);
+
+  const removed = await worker.fetch(new Request(`https://arcadia.test/api/subject-files/${file.id}`, { method: "DELETE", headers }), env, {});
+  assert.equal(removed.status, 200); assert.equal(env.FILES.objects.size, 0);
 });
 
 test("upgrades the legacy theme constraint without losing preferences", async () => {
@@ -254,7 +295,7 @@ test("registers, verifies, claims legacy data, and enforces secure sessions and 
   assert.equal(rejected.status, 403);
   const updated = await worker.fetch(new Request("https://arcadia.test/api/account", { method: "PATCH", headers: { cookie, "content-type": "application/json", "x-csrf-token": loginBody.csrfToken }, body: JSON.stringify({ theme: "midnight", name: "Arcadia Student" }) }), env, {});
   assert.equal(updated.status, 200); assert.equal((await updated.json()).account.theme, "midnight");
-  for (const theme of ["dawn", "rose", "ocean", "sage", "lavender", "dusk"]) {
+  for (const theme of ["dawn", "rose", "ocean", "sage", "lavender", "dusk", "vanta"]) {
     const themed = await worker.fetch(new Request("https://arcadia.test/api/account", { method: "PATCH", headers: { cookie, "content-type": "application/json", "x-csrf-token": loginBody.csrfToken }, body: JSON.stringify({ theme }) }), env, {});
     assert.equal(themed.status, 200, theme); assert.equal((await themed.json()).account.theme, theme);
   }

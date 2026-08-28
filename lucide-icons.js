@@ -33,6 +33,7 @@ const PanelLeftOpen = [
   ['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }],
   ['path', { d: 'M9 3v18' }], ['path', { d: 'm14 9 3 3-3 3' }]
 ];
+const Paperclip = [['path', { d: 'm16 6-7.414 7.414a2 2 0 0 0 2.828 2.828L19 8.657a4 4 0 0 0-5.657-5.657L5.757 10.586a6 6 0 1 0 8.486 8.485L21 12.314' }]];
 const Sparkles = [
   ['path', { d: 'M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z' }],
   ['path', { d: 'M20 2v4' }], ['path', { d: 'M22 4h-4' }],
@@ -87,7 +88,7 @@ window.ArcadiaLucide = {
   createIcons,
   icons: {
     ArrowUp, CalendarDays, ChartNoAxesColumnIncreasing, Check, ChevronLeft, ChevronRight, House, Moon,
-    PanelLeftClose, PanelLeftOpen, Sparkles, Sun, Timer, Users, X
+    PanelLeftClose, PanelLeftOpen, Paperclip, Sparkles, Sun, Timer, Users, X
   }
 };
 })();

@@ -1,9 +1,9 @@
 const { createIcons, icons: lucideIcons } = window.ArcadiaLucide;
 
-const themes = ['light', 'dawn', 'rose', 'ocean', 'sage', 'lavender', 'dusk', 'dark', 'midnight'];
+const themes = ['light', 'dawn', 'rose', 'ocean', 'sage', 'lavender', 'dusk', 'dark', 'midnight', 'vanta'];
 const themeColours = {
   light: '#f4f5f9', dawn: '#fbf5ef', rose: '#faf4f6', ocean: '#f2f7fa', sage: '#f4f7f1',
-  lavender: '#f7f5fa', dusk: '#282633', dark: '#22242d', midnight: '#020309'
+  lavender: '#f7f5fa', dusk: '#282633', dark: '#22242d', midnight: '#020309', vanta: '#000000'
 };
 
 const trackerPresets = {
@@ -26,7 +26,8 @@ const state = {
   editingEvent: null, drag: null,
   csrfToken: null,
   loading: false,
-  saving: false
+  saving: false,
+  subjectContextTimers: new Map()
 };
 
 const elements = {
@@ -135,6 +136,14 @@ function bindControls() {
   document.querySelector('#event-outcome-complete').addEventListener('click', () => saveEventOutcome('completed'));
   document.querySelector('#event-outcome-missed').addEventListener('click', () => saveEventOutcome('missed'));
   elements.composer.addEventListener('submit', sendChat);
+  elements.mentorContext.addEventListener('input', (event) => { if (event.target.matches('.subject-context-note')) queueSubjectContextSave(event.target.closest('.subject-context-card')); });
+  elements.mentorContext.addEventListener('focusout', (event) => { if (event.target.matches('.subject-context-note')) saveSubjectContextCard(event.target.closest('.subject-context-card')); });
+  elements.mentorContext.addEventListener('change', (event) => {
+    const card = event.target.closest('.subject-context-card'); if (!card) return;
+    if (event.target.matches('.subject-context-toggle input')) saveSubjectContextCard(card);
+    if (event.target.matches('.subject-upload input')) uploadSubjectFiles(card.dataset.subjectId, [...event.target.files], event.target);
+  });
+  elements.mentorContext.addEventListener('click', (event) => { const button = event.target.closest('[data-delete-subject-file]'); if (button) deleteSubjectFile(button.dataset.deleteSubjectFile); });
   document.querySelectorAll('[data-prompt]').forEach((button) => button.addEventListener('click', () => { elements.chatInput.value = button.dataset.prompt; elements.chatInput.focus(); }));
   document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => document.querySelector(`#${button.dataset.close}`).close()));
   elements.onboardingClose.addEventListener('click', () => elements.onboardingDialog.close());
@@ -863,7 +872,7 @@ function openAssessment(task) {
 }
 
 function renderMentor() {
-  const { assistant, subjects, tasks, commitments, preferences, events, user } = state.data;
+  const { assistant, subjects, tasks, events, user, analytics, google, subjectContexts = [] } = state.data;
   elements.messages.innerHTML = '';
   const messages = assistant.messages.length ? assistant.messages : [{ role: 'assistant', content: state.data.briefing || 'Finish Life setup, then tell me what changed and I’ll update the real plan.' }];
   messages.forEach((message) => appendMessage(message.role, message.content));
@@ -872,9 +881,55 @@ function renderMentor() {
   const openTasks = tasks.filter((task) => task.status === 'pending');
   const todayKey = dateKeyInZone(new Date(), user.timezone);
   const todayCount = events.filter((event) => dateKeyInZone(event.startAt, user.timezone) === todayKey && event.status !== 'cancelled').length;
-  elements.mentorContext.innerHTML = `<div class="context-row"><span>Student</span><strong>${escapeHtml(user.name)} · ${escapeHtml(user.grade || 'Grade not set')}</strong></div><div class="context-row"><span>Subjects</span><strong>${subjects.length ? subjects.map((item) => escapeHtml(item.name)).join(', ') : 'None yet'}</strong></div><div class="context-row"><span>Open work</span><strong>${openTasks.length} task${openTasks.length === 1 ? '' : 's'} · ${formatDuration(openTasks.reduce((sum, task) => sum + task.remainingMinutes, 0))} remaining</strong></div><div class="context-row"><span>Today</span><strong>${todayCount} plan item${todayCount === 1 ? '' : 's'}</strong></div><div class="context-row"><span>Fixed commitments</span><strong>${commitments.length} recurring or one-off</strong></div><div class="context-row"><span>Sleep protected</span><strong>${escapeHtml(preferences.bedtime)}–${escapeHtml(preferences.wakeTime)} · ${formatDuration(preferences.minimumSleepMinutes)} minimum</strong></div>`;
+  const access = `<div class="arcad-access-grid"><div class="arcad-access-item"><span><i></i>Calendar access</span><strong>${google.connected ? `${google.calendars.length} Google calendar${google.calendars.length === 1 ? '' : 's'} + Arcadia` : 'Arcadia schedule connected'}</strong></div><div class="arcad-access-item"><span><i></i>Analytics access</span><strong>${analytics.completionRate}% completion · ${formatDuration(analytics.focusedMinutes)} focused</strong></div></div>`;
+  const cards = subjects.length ? subjects.map((subject) => {
+    const subjectTasks = openTasks.filter((task) => task.subject === subject.name);
+    const subjectEvents = events.filter((event) => event.subject === subject.name && event.status !== 'cancelled');
+    const knowledge = subjectContexts.find((item) => item.subjectId === subject.id) || { notes: '', includeInArcad: true, files: [] };
+    const files = knowledge.files.map((file) => `<div class="subject-file"><a href="/api/subject-files/${encodeURIComponent(file.id)}" download>${escapeHtml(file.filename)}<small>${escapeHtml(fileTypeLabel(file))} · ${formatFileSize(file.sizeBytes)}</small></a><button class="subject-file-delete" type="button" data-delete-subject-file="${escapeAttr(file.id)}" aria-label="Remove ${escapeAttr(file.filename)}"><i data-lucide="x" aria-hidden="true"></i></button></div>`).join('');
+    return `<section class="subject-context-card" data-subject-id="${escapeAttr(subject.id)}" style="--subject-colour:${escapeAttr(subject.color || 'var(--accent)')}"><div class="subject-context-top"><strong class="subject-context-name"><i class="subject-context-dot" aria-hidden="true"></i>${escapeHtml(subject.name)}</strong><label class="subject-context-toggle"><input type="checkbox" ${knowledge.includeInArcad ? 'checked' : ''} /> Arcad uses this</label></div><div class="subject-context-stats"><span>${subjectTasks.length} open task${subjectTasks.length === 1 ? '' : 's'}</span><span>${formatDuration(subjectTasks.reduce((sum, task) => sum + task.remainingMinutes, 0))} left</span><span>${subjectEvents.length} calendar item${subjectEvents.length === 1 ? '' : 's'}</span></div><textarea class="subject-context-note" maxlength="4000" placeholder="Add what Arcad should remember about ${escapeAttr(subject.name)}…">${escapeHtml(knowledge.notes)}</textarea><div class="subject-file-list">${files}</div><div class="subject-context-actions"><label class="subject-upload" title="Add any file up to 10 MB. Text-based files can be read by Arcad."><i data-lucide="paperclip" aria-hidden="true"></i> Add files<input type="file" multiple /></label><span class="subject-file-count">${knowledge.files.length ? `${knowledge.files.length} file${knowledge.files.length === 1 ? '' : 's'}` : 'No files yet'}</span></div><div class="subject-context-status" aria-live="polite"></div></section>`;
+  }).join('') : `<div class="context-row"><span>Subjects</span><strong>Add subjects in Life setup to create Arcad knowledge spaces.</strong></div>`;
+  elements.mentorContext.innerHTML = access + cards;
+  renderIcons(elements.mentorContext);
   elements.chatInput.disabled = !assistant.configured;
   elements.send.disabled = !assistant.configured;
+}
+
+function queueSubjectContextSave(card) {
+  if (!card) return; const subjectId = card.dataset.subjectId;
+  clearTimeout(state.subjectContextTimers.get(subjectId));
+  card.querySelector('.subject-context-status').textContent = 'Unsaved changes';
+  state.subjectContextTimers.set(subjectId, setTimeout(() => saveSubjectContextCard(card), 650));
+}
+
+async function saveSubjectContextCard(card) {
+  if (!card) return; const subjectId = card.dataset.subjectId; clearTimeout(state.subjectContextTimers.get(subjectId));
+  const status = card.querySelector('.subject-context-status'); status.textContent = 'Saving…';
+  try {
+    const result = await api(`/api/subjects/${encodeURIComponent(subjectId)}/context`, { method: 'PATCH', body: JSON.stringify({ notes: card.querySelector('.subject-context-note').value, includeInArcad: card.querySelector('.subject-context-toggle input').checked }) });
+    const index = (state.data.subjectContexts || []).findIndex((item) => item.subjectId === subjectId);
+    if (index >= 0) state.data.subjectContexts[index] = result.context; else (state.data.subjectContexts ||= []).push(result.context);
+    status.textContent = 'Saved for Arcad';
+  } catch (error) { status.textContent = error.message; }
+}
+
+async function uploadSubjectFiles(subjectId, files, input) {
+  if (!files.length) return; const card = input.closest('.subject-context-card'); const status = card.querySelector('.subject-context-status');
+  if (files.length > 5) { status.textContent = 'Add up to 5 files at a time.'; input.value = ''; return; }
+  if (files.some((file) => file.size > 10 * 1024 * 1024)) { status.textContent = 'Each file must be 10 MB or smaller.'; input.value = ''; return; }
+  status.textContent = `Uploading ${files.length} file${files.length === 1 ? '' : 's'}…`;
+  try {
+    for (const file of files) {
+      const response = await fetch(`/api/subjects/${encodeURIComponent(subjectId)}/files?filename=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'content-type': file.type || 'application/octet-stream', 'x-csrf-token': state.csrfToken }, body: file });
+      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || 'Arcadia could not upload that file.'); }
+    }
+    input.value = ''; toast('Subject files added for Arcad.'); await loadDashboard();
+  } catch (error) { status.textContent = error.message; input.value = ''; }
+}
+
+async function deleteSubjectFile(id) {
+  try { await api(`/api/subject-files/${encodeURIComponent(id)}`, { method: 'DELETE' }); toast('File removed.'); await loadDashboard(); }
+  catch (error) { toast(error.message); }
 }
 
 function renderProposals(proposals = []) {
@@ -1116,13 +1171,13 @@ function applyTheme(theme) {
 
 const arcadConstellationSets = {
   desktop: [
-    [[.08,.38],[.13,.26],[.18,.34],[.23,.19],[.28,.30]],
-    [[.42,.14],[.47,.25],[.52,.17],[.57,.30],[.62,.22],[.67,.36]],
-    [[.75,.20],[.80,.09],[.84,.21],[.89,.15],[.94,.29]]
+    { name: 'ORION', stars: [[.08,.14],[.23,.15],[.13,.29],[.17,.28],[.21,.27],[.25,.47],[.07,.45]], lines: [[0,2],[2,3],[3,4],[4,1],[4,5],[2,6]] },
+    { name: 'CRUX', stars: [[.49,.10],[.51,.45],[.40,.27],[.61,.29],[.46,.32]], lines: [[0,1],[2,3],[4,1]] },
+    { name: 'CASSIOPEIA', stars: [[.70,.22],[.76,.12],[.82,.25],[.89,.13],[.96,.23]], lines: [[0,1],[1,2],[2,3],[3,4]] }
   ],
   mobile: [
-    [[.08,.39],[.18,.25],[.29,.34],[.40,.18],[.50,.30]],
-    [[.59,.15],[.68,.27],[.77,.18],[.86,.31],[.94,.21]]
+    { name: 'CRUX', stars: [[.20,.10],[.23,.44],[.08,.27],[.38,.29],[.17,.32]], lines: [[0,1],[2,3],[4,1]] },
+    { name: 'CASSIOPEIA', stars: [[.53,.23],[.63,.12],[.73,.25],[.84,.13],[.95,.23]], lines: [[0,1],[1,2],[2,3],[3,4]] }
   ]
 };
 
@@ -1130,7 +1185,7 @@ function createArcadSky() {
   if (!elements.arcadStars || !elements.arcadConstellations) return;
   const mobile = matchMedia('(max-width: 720px)').matches;
   const random = seededRandom(mobile ? 0xA7CAD02 : 0xA7CAD01);
-  const count = mobile ? 68 : 116;
+  const count = mobile ? 120 : 210;
   const kinds = ['dot', 'dot', 'glow', 'four', 'six', 'halo'];
   elements.arcadStars.innerHTML = '';
   for (let index = 0; index < count; index += 1) {
@@ -1145,7 +1200,7 @@ function createArcadSky() {
     elements.arcadStars.append(star);
   }
   const sets = arcadConstellationSets[mobile ? 'mobile' : 'desktop'];
-  sets.flat().forEach(([x,y], index) => {
+  sets.flatMap((set) => set.stars).forEach(([x,y], index) => {
     const anchor = document.createElement('i');
     anchor.className = 'arcad-star constellation';
     anchor.style.cssText = `left:${x * 100}%;top:${y * 100}%;--star-size:${index % 4 === 0 ? 4.5 : 3}px;--star-opacity:.78;--star-speed:${6 + index % 5}s;--star-delay:-${index % 7}s`;
@@ -1168,10 +1223,16 @@ function drawArcadConstellations() {
   context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--arcad-line').trim();
   context.lineWidth = 1;
   const sets = arcadConstellationSets[matchMedia('(max-width: 720px)').matches ? 'mobile' : 'desktop'];
-  sets.forEach((points) => {
+  sets.forEach((set) => {
     context.beginPath();
-    points.forEach(([x,y], index) => { const px = x * bounds.width; const py = y * bounds.height; if (index === 0) context.moveTo(px,py); else context.lineTo(px,py); });
+    set.lines.forEach(([from,to]) => { context.moveTo(set.stars[from][0] * bounds.width,set.stars[from][1] * bounds.height); context.lineTo(set.stars[to][0] * bounds.width,set.stars[to][1] * bounds.height); });
     context.stroke();
+    context.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--arcad-star').trim();
+    context.globalAlpha = .52;
+    context.font = '700 9px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
+    context.letterSpacing = '1.4px';
+    context.fillText(set.name,set.stars[0][0] * bounds.width + 8,set.stars[0][1] * bounds.height - 9);
+    context.globalAlpha = 1;
   });
 }
 
@@ -1234,6 +1295,8 @@ function closeAccountMenu() { elements.accountMenu.hidden = true; elements.avata
 function renderIcons(root = document) { createIcons({ icons: lucideIcons, root, attrs: { 'aria-hidden': 'true' } }); }
 function setIcon(element, name) { element.innerHTML = `<i data-lucide="${name}" aria-hidden="true"></i>`; renderIcons(element); }
 function formatDuration(minutes) { const safe = Math.max(0, Math.round(Number(minutes) || 0)); const hours = Math.floor(safe / 60); const rest = safe % 60; return hours ? `${hours}h${rest ? ` ${rest}m` : ''}` : `${rest}m`; }
+function formatFileSize(bytes) { const size = Math.max(0, Number(bytes) || 0); return size < 1024 ? `${size} B` : size < 1024 * 1024 ? `${Math.round(size / 102.4) / 10} KB` : `${Math.round(size / 1024 / 102.4) / 10} MB`; }
+function fileTypeLabel(file) { if (file.textExcerpt) return 'Text available to Arcad'; const extension = String(file.filename || '').split('.').pop(); return extension && extension !== file.filename ? extension.toUpperCase() : (file.contentType || 'File'); }
 function minutesBetween(start, end) { return Math.max(0, Math.round((Date.parse(end) - Date.parse(start)) / 60000)); }
 function formatTime(value, timezone) { return new Intl.DateTimeFormat(undefined, { timeZone: timezone, hour: 'numeric', minute: '2-digit' }).format(new Date(value)); }
 function formatDateTime(value, timezone) { return zonedDate(value, timezone, { weekday: 'short', hour: 'numeric', minute: '2-digit' }); }

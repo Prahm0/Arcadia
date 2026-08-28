@@ -484,6 +484,66 @@ export async function getAnalytics(env, userId, start, end, capacityDays = 7) {
   };
 }
 
+export async function listSubjectContexts(env, userId) {
+  const [contextsResult, filesResult] = await Promise.all([
+    env.DB.prepare(`SELECT s.id AS subjectId, s.name AS subjectName, s.color,
+      COALESCE(c.notes, '') AS notes, COALESCE(c.include_in_arcad, 1) AS includeInArcad,
+      c.updated_at AS updatedAt
+      FROM subjects s LEFT JOIN subject_contexts c ON c.subject_id = s.id AND c.user_id = s.user_id
+      WHERE s.user_id = ? ORDER BY s.priority DESC, s.name COLLATE NOCASE`).bind(userId).all(),
+    env.DB.prepare(`SELECT id, subject_id AS subjectId, filename, content_type AS contentType,
+      size_bytes AS sizeBytes, text_excerpt AS textExcerpt, created_at AS createdAt
+      FROM subject_files WHERE user_id = ? ORDER BY created_at DESC`).bind(userId).all()
+  ]);
+  const filesBySubject = new Map();
+  for (const file of filesResult.results || []) {
+    if (!filesBySubject.has(file.subjectId)) filesBySubject.set(file.subjectId, []);
+    filesBySubject.get(file.subjectId).push(file);
+  }
+  return (contextsResult.results || []).map((row) => ({
+    ...row,
+    includeInArcad: Boolean(row.includeInArcad),
+    files: (filesBySubject.get(row.subjectId) || []).slice(0, 30)
+  }));
+}
+
+export async function saveSubjectContext(env, userId, subjectId, input) {
+  const subject = await env.DB.prepare("SELECT id FROM subjects WHERE id = ? AND user_id = ?").bind(subjectId, userId).first();
+  if (!subject) return null;
+  const now = new Date().toISOString();
+  await env.DB.prepare(`INSERT INTO subject_contexts (subject_id, user_id, notes, include_in_arcad, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(subject_id) DO UPDATE SET notes = excluded.notes, include_in_arcad = excluded.include_in_arcad, updated_at = excluded.updated_at
+    WHERE subject_contexts.user_id = excluded.user_id`)
+    .bind(subjectId, userId, input.notes, input.includeInArcad ? 1 : 0, now, now).run();
+  return (await listSubjectContexts(env, userId)).find((item) => item.subjectId === subjectId) || null;
+}
+
+export async function createSubjectFileMetadata(env, userId, subjectId, file) {
+  const subject = await env.DB.prepare("SELECT id FROM subjects WHERE id = ? AND user_id = ?").bind(subjectId, userId).first();
+  if (!subject) return null;
+  const record = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), ...file };
+  await env.DB.prepare(`INSERT INTO subject_files
+    (id, user_id, subject_id, filename, content_type, size_bytes, storage_key, text_excerpt, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(record.id, userId, subjectId, record.filename, record.contentType, record.sizeBytes, record.storageKey, record.textExcerpt, record.createdAt).run();
+  const { storageKey, textExcerpt, ...view } = record;
+  return { ...view, subjectId };
+}
+
+export async function getSubjectFile(env, userId, id) {
+  return env.DB.prepare(`SELECT id, subject_id AS subjectId, filename, content_type AS contentType,
+    size_bytes AS sizeBytes, storage_key AS storageKey, text_excerpt AS textExcerpt, created_at AS createdAt
+    FROM subject_files WHERE id = ? AND user_id = ?`).bind(id, userId).first();
+}
+
+export async function deleteSubjectFileMetadata(env, userId, id) {
+  const file = await getSubjectFile(env, userId, id);
+  if (!file) return null;
+  const result = await env.DB.prepare("DELETE FROM subject_files WHERE id = ? AND user_id = ?").bind(id, userId).run();
+  return Number(result.meta?.changes || 0) ? file : null;
+}
+
 export async function listMessages(env, userId, limit = 20) {
   const result = await env.DB.prepare(`
     SELECT id, role, content, created_at AS createdAt FROM chat_messages

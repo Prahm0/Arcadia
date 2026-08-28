@@ -18,7 +18,7 @@
     <script>
       try {
         const saved = localStorage.getItem('arcadia-theme');
-        document.documentElement.dataset.theme = ['light', 'dawn', 'rose', 'ocean', 'sage', 'lavender', 'dusk', 'dark', 'midnight'].includes(saved) ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.dataset.theme = ['light', 'dawn', 'rose', 'ocean', 'sage', 'lavender', 'dusk', 'dark', 'midnight', 'vanta'].includes(saved) ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
       } catch {}
     </script>
     <style>
@@ -139,6 +139,19 @@
         --arcad-sky: #433b52; --arcad-sky-mid: #312e3d; --arcad-star: #e1c7ee;
         --arcad-glass: rgba(54,50,66,.76); --arcad-user: #a88abe; --arcad-user-ink: #292331;
         --arcad-line: rgba(208,182,223,.22); --arcad-glow: rgba(14,10,18,.36);
+      }
+      :root[data-theme="vanta"] {
+        color-scheme: dark; --ink: #ffd928; --muted: #bcae42; --line: #ffd928;
+        --canvas: #000; --panel: #000; --panel-soft: #050500; --control: #000;
+        --hover: #0b0a00; --rail: #000; --divider: #4f4600; --accent: #ffd928;
+        --accent-dark: #ffe65d; --accent-soft: #171400; --on-accent: #000;
+        --blue: #ffd928; --blue-soft: #171400; --green: #ffd928; --green-soft: #171400;
+        --amber: #ffd928; --amber-soft: #171400; --danger: #ffea73; --danger-soft: #171400;
+        --sport: #ffd928; --school: #ffd928; --extra: #ffd928; --other: #bcae42;
+        --shadow-low: none; --shadow: none; --shadow-high: none;
+        --arcad-sky: #000; --arcad-sky-mid: #000; --arcad-star: #ffd928;
+        --arcad-glass: rgba(0,0,0,.92); --arcad-user: #ffd928; --arcad-user-ink: #000;
+        --arcad-line: rgba(255,217,40,.58); --arcad-glow: rgba(255,217,40,.12);
       }
       * { box-sizing: border-box; }
       html { color-scheme: light; }
@@ -417,8 +430,13 @@
       .arcad-star.six { transform: rotate(30deg); }
       .arcad-star.six::before { box-shadow: 0 0 calc(var(--star-size) * 1.6) currentColor; }
       .arcad-star.constellation { border-radius: 50%; background: currentColor; box-shadow: 0 0 calc(var(--star-size) * 2.2) currentColor; }
+      :root[data-theme="vanta"] .workspace.arcad-active { background: #000; }
+      :root[data-theme="vanta"] .composer, :root[data-theme="vanta"] .subject-context-card, :root[data-theme="vanta"] .proposal { outline: 1px solid #ffd928; box-shadow: none; }
+      :root[data-theme="vanta"] .button, :root[data-theme="vanta"] .send, :root[data-theme="vanta"] .message.user, :root[data-theme="vanta"] .subject-upload, :root[data-theme="vanta"] .suggestion, :root[data-theme="vanta"] .rail-button.active { outline: 1px solid #ffd928; background: #000; color: #ffd928; box-shadow: none; }
+      :root[data-theme="vanta"] .brand-mark, :root[data-theme="vanta"] .mobile-brand { background: #000; box-shadow: inset 0 0 0 1px #ffd928; }
+      :root[data-theme="vanta"] .brand-mark img, :root[data-theme="vanta"] .mobile-brand img { filter: grayscale(1) sepia(1) saturate(8) hue-rotate(355deg) brightness(1.18); }
       .arcad-view { position: relative; z-index: 1; min-height: calc(100vh - 150px); }
-      .arcad-layout { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: clamp(24px,3vw,48px); align-items: start; max-width: 1360px; margin: 0 auto; }
+      .arcad-layout { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: clamp(24px,3vw,48px); align-items: start; max-width: 1420px; margin: 0 auto; }
       .arcad-chat { display: flex; flex-direction: column; min-height: 650px; background: transparent; }
       .arcad-chat-head, .arcad-context-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 4px 18px; }
       .mentor-status { display: inline-flex; align-items: center; gap: 7px; color: var(--green); font-size: 10px; font-weight: 720; }
@@ -444,10 +462,36 @@
       .composer.sending .send { transform: scale(.92); }
       .composer.sending .send .lucide { animation: arcad-spin 800ms linear infinite; }
       .arcad-context { min-width: 0; padding-top: 2px; }
-      .context-list { display: grid; gap: 10px; background: transparent; }
+      .context-list { display: grid; gap: 12px; background: transparent; }
+      .arcad-access-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-column: 1 / -1; gap: 8px; }
+      .arcad-access-item { padding: 12px; border-radius: 15px; background: color-mix(in srgb,var(--arcad-glass) 62%,transparent); }
+      .arcad-access-item span, .arcad-access-item strong { display: block; }
+      .arcad-access-item span { color: var(--muted); font-size: 8px; }
+      .arcad-access-item strong { margin-top: 5px; font-size: 10px; line-height: 1.35; }
+      .arcad-access-item i { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb,var(--green) 15%,transparent); }
       .context-row { padding: 13px 4px; background: transparent; }
       .context-row span { display: block; color: var(--muted); font-size: 9px; }
       .context-row strong { display: block; margin-top: 6px; font-size: 11px; line-height: 1.4; }
+      .subject-context-card { padding: 15px; border-radius: 18px; background: color-mix(in srgb,var(--arcad-glass) 78%,transparent); box-shadow: 0 12px 32px color-mix(in srgb,var(--arcad-glow) 58%,transparent); backdrop-filter: blur(14px); }
+      .subject-context-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .subject-context-name { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: 12px; }
+      .subject-context-dot { width: 9px; height: 9px; flex: 0 0 auto; border-radius: 50%; background: var(--subject-colour,var(--accent)); box-shadow: 0 0 12px color-mix(in srgb,var(--subject-colour,var(--accent)) 52%,transparent); }
+      .subject-context-toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 8px; }
+      .subject-context-toggle input { width: 15px; height: 15px; accent-color: var(--accent); }
+      .subject-context-stats { display: flex; gap: 10px; margin: 11px 0; color: var(--muted); font-size: 8px; }
+      .subject-context-note { width: 100%; min-height: 68px; resize: vertical; padding: 10px 11px; border: 0; border-radius: 12px; background: color-mix(in srgb,var(--canvas) 52%,transparent); color: var(--ink); font-size: 10px; line-height: 1.5; outline: 0; }
+      .subject-context-note:focus { box-shadow: 0 0 0 3px color-mix(in srgb,var(--accent) 15%,transparent); }
+      .subject-context-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+      .subject-upload { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 11px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-dark); font-size: 9px; font-weight: 700; cursor: pointer; }
+      .subject-upload input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+      .subject-file-count { color: var(--muted); font-size: 8px; }
+      .subject-file-list { display: grid; gap: 6px; margin-top: 10px; }
+      .subject-file { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 8px 9px; border-radius: 11px; background: color-mix(in srgb,var(--canvas) 48%,transparent); }
+      .subject-file a { min-width: 0; overflow: hidden; font-size: 9px; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
+      .subject-file small { display: block; margin-top: 3px; color: var(--muted); font-size: 7px; font-weight: 500; }
+      .subject-file-delete { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); }
+      .subject-file-delete:hover { background: var(--danger-soft); color: var(--danger); }
+      .subject-context-status { min-height: 12px; margin-top: 7px; color: var(--muted); font-size: 7px; text-align: right; }
 
       @keyframes arcad-twinkle { from { opacity: calc(var(--star-opacity,.65) * .45); transform: rotate(var(--star-rotate,0deg)) scale(.84); } to { opacity: var(--star-opacity,.65); transform: rotate(var(--star-rotate,0deg)) scale(1.08); } }
       @keyframes arcad-message-in { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
@@ -763,7 +807,7 @@
     <dialog id="settings-dialog" aria-labelledby="settings-title">
       <div class="modal-head"><h2 id="settings-title">Settings</h2><button class="close-button" type="button" data-close="settings-dialog" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button></div>
       <div class="modal-body">
-        <div class="connection-card"><strong>Appearance</strong><p>Choose the colour style Arcadia saves to your account.</p><div class="field"><label for="theme-select">Style</label><select id="theme-select"><option value="light">Light</option><option value="dawn">Dawn</option><option value="rose">Rose</option><option value="ocean">Ocean</option><option value="sage">Sage</option><option value="lavender">Lavender</option><option value="dusk">Dusk</option><option value="dark">Dark</option><option value="midnight">Midnight</option></select></div></div>
+        <div class="connection-card"><strong>Appearance</strong><p>Choose the colour style Arcadia saves to your account.</p><div class="field"><label for="theme-select">Style</label><select id="theme-select"><option value="light">Light</option><option value="dawn">Dawn</option><option value="rose">Rose</option><option value="ocean">Ocean</option><option value="sage">Sage</option><option value="lavender">Lavender</option><option value="dusk">Dusk</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="vanta">Vanta Black</option></select></div></div>
         <div class="connection-card"><strong>Your profile</strong><p id="account-email">Signed in</p><form id="profile-form"><div class="field"><label for="account-display-name">Display name</label><input id="account-display-name" maxlength="80" autocomplete="name" required /></div><div class="button-row"><button class="button primary" type="submit">Save profile</button></div><p class="form-error" id="profile-error" aria-live="polite"></p></form></div>
         <div class="connection-card"><strong>Your life setup</strong><p>Update subjects, deadlines, commitments, sleep, and study capacity. Arcadia will rebuild future flexible blocks from the new information.</p><button class="button" id="edit-life-button" type="button">Edit life setup</button></div>
         <div class="connection-card"><strong>Google Calendar</strong><p id="google-detail">Connect Google Calendar so imported events become fixed commitments. Arcadia only writes study blocks to its own calendar.</p><div class="button-row"><button class="button primary" id="google-connect" type="button">Connect Google</button><button class="button danger" id="google-disconnect" type="button" hidden>Disconnect</button></div></div>
