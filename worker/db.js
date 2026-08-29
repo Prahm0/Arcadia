@@ -31,6 +31,7 @@ export async function ensureDatabase(env) {
       await ensureColumn(env, "study_sessions", "distractions", "INTEGER NOT NULL DEFAULT 0 CHECK (distractions >= 0)");
       await ensureColumn(env, "auth_rate_limits", "identity_hash", "TEXT NOT NULL DEFAULT ''");
       await ensureColumn(env, "events", "pinned", "INTEGER NOT NULL DEFAULT 0");
+      await ensureColumn(env, "chat_messages", "conversation_id", "TEXT");
       for (const sql of schemaStatements.filter(isIndex)) await env.DB.prepare(sql).run();
     })().catch((error) => { schemaPromises.delete(env.DB); throw error; });
     schemaPromises.set(env.DB, schemaPromise);
@@ -576,11 +577,113 @@ export async function listMessages(env, userId, limit = 20) {
   return (result.results || []).reverse();
 }
 
-export async function saveMessage(env, userId, role, content) {
-  const message = { id: crypto.randomUUID(), role, content, createdAt: new Date().toISOString() };
-  await env.DB.prepare("INSERT INTO chat_messages (id, user_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)")
-    .bind(message.id, userId, role, content, message.createdAt).run();
+export async function saveMessage(env, userId, role, content, conversationId = null) {
+  const message = { id: crypto.randomUUID(), role, content, conversationId: conversationId || null, createdAt: new Date().toISOString() };
+  await env.DB.prepare("INSERT INTO chat_messages (id, user_id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(message.id, userId, message.conversationId, role, content, message.createdAt).run();
   return message;
+}
+
+function deriveConversationTitle(text) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return null;
+  return clean.length > 48 ? `${clean.slice(0, 47).trimEnd()}…` : clean;
+}
+
+export async function getConversation(env, userId, id) {
+  return env.DB.prepare(`
+    SELECT id, title, created_at AS createdAt, updated_at AS updatedAt, last_message_at AS lastMessageAt
+    FROM chat_conversations WHERE id = ? AND user_id = ?
+  `).bind(id, userId).first();
+}
+
+export async function createConversation(env, userId, { title = null } = {}) {
+  const now = new Date().toISOString();
+  const conversation = { id: crypto.randomUUID(), title: title || null, createdAt: now, updatedAt: now, lastMessageAt: null };
+  await env.DB.prepare(`
+    INSERT INTO chat_conversations (id, user_id, title, created_at, updated_at, last_message_at)
+    VALUES (?, ?, ?, ?, ?, NULL)
+  `).bind(conversation.id, userId, conversation.title, now, now).run();
+  return conversation;
+}
+
+export async function listConversations(env, userId, limit = 50) {
+  const result = await env.DB.prepare(`
+    SELECT c.id, c.title, c.created_at AS createdAt, c.updated_at AS updatedAt, c.last_message_at AS lastMessageAt,
+      (SELECT m.content FROM chat_messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS lastMessage,
+      (SELECT COUNT(*) FROM chat_messages m WHERE m.conversation_id = c.id) AS messageCount
+    FROM chat_conversations c
+    WHERE c.user_id = ?
+    ORDER BY COALESCE(c.last_message_at, c.updated_at, c.created_at) DESC
+    LIMIT ?
+  `).bind(userId, Math.min(100, Math.max(1, limit))).all();
+  return (result.results || []).map((row) => ({
+    id: row.id,
+    title: row.title || null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    lastMessageAt: row.lastMessageAt,
+    messageCount: Number(row.messageCount || 0),
+    snippet: row.lastMessage ? deriveConversationTitle(row.lastMessage) : ""
+  }));
+}
+
+export async function listConversationMessages(env, userId, conversationId, limit = 50) {
+  const result = await env.DB.prepare(`
+    SELECT id, role, content, created_at AS createdAt FROM chat_messages
+    WHERE user_id = ? AND conversation_id = ? ORDER BY created_at DESC LIMIT ?
+  `).bind(userId, conversationId, Math.min(200, Math.max(1, limit))).all();
+  return (result.results || []).reverse();
+}
+
+export async function touchConversation(env, userId, conversationId, { at = new Date().toISOString(), autoTitleFrom = null } = {}) {
+  if (autoTitleFrom) {
+    await env.DB.prepare(`
+      UPDATE chat_conversations SET last_message_at = ?, updated_at = ?, title = COALESCE(title, ?)
+      WHERE id = ? AND user_id = ?
+    `).bind(at, at, deriveConversationTitle(autoTitleFrom), conversationId, userId).run();
+  } else {
+    await env.DB.prepare(`
+      UPDATE chat_conversations SET last_message_at = ?, updated_at = ?
+      WHERE id = ? AND user_id = ?
+    `).bind(at, at, conversationId, userId).run();
+  }
+}
+
+export async function getOrCreateActiveConversation(env, userId, preferredId = null) {
+  if (preferredId) {
+    const found = await getConversation(env, userId, preferredId);
+    if (found) return found;
+  }
+  const newest = async () => env.DB.prepare(`
+    SELECT id FROM chat_conversations WHERE user_id = ?
+    ORDER BY COALESCE(last_message_at, updated_at, created_at) DESC LIMIT 1
+  `).bind(userId).first();
+
+  const existing = await newest();
+  if (existing) return getConversation(env, userId, existing.id);
+
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  const firstUser = await env.DB.prepare(`
+    SELECT content FROM chat_messages
+    WHERE user_id = ? AND conversation_id IS NULL AND role = 'user'
+    ORDER BY created_at ASC LIMIT 1
+  `).bind(userId).first();
+  const lastOrphan = await env.DB.prepare(`
+    SELECT MAX(created_at) AS ts FROM chat_messages WHERE user_id = ? AND conversation_id IS NULL
+  `).bind(userId).first();
+  const title = firstUser ? deriveConversationTitle(firstUser.content) : null;
+  await env.DB.prepare(`
+    INSERT INTO chat_conversations (id, user_id, title, created_at, updated_at, last_message_at)
+    SELECT ?, ?, ?, ?, ?, ?
+    WHERE NOT EXISTS (SELECT 1 FROM chat_conversations WHERE user_id = ?)
+  `).bind(id, userId, title, now, now, lastOrphan?.ts || null, userId).run();
+  const resolved = await newest();
+  const activeId = resolved?.id || id;
+  await env.DB.prepare("UPDATE chat_messages SET conversation_id = ? WHERE user_id = ? AND conversation_id IS NULL")
+    .bind(activeId, userId).run();
+  return getConversation(env, userId, activeId);
 }
 
 export async function listPendingProposals(env, userId) {

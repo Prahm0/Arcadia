@@ -12,6 +12,10 @@ const trackerPresets = {
   exam: { focus: 45, rest: 15, cycles: 2 }
 };
 
+// The study companion (floating orb + Companion studio) is parked until it can run
+// as a real desktop overlay. Flip to true to bring the whole feature back.
+const COMPANION_ENABLED = false;
+
 const state = {
   data: null,
   anchorDate: new Date(),
@@ -30,8 +34,11 @@ const state = {
   companionReaction: null,
   companionReactionTimer: null,
   subjectContextTimers: new Map(),
-  arcadContextOpen: false,
-  arcadContextUserId: null
+  arcadAsidePanel: 'chat',
+  arcadContextUserId: null,
+  conversations: [],
+  activeConversationId: null,
+  loadedConversationId: null
 };
 
 const elements = {
@@ -56,12 +63,14 @@ const elements = {
   trackerCycles: document.querySelector('#tracker-cycles'), trackerAutoRest: document.querySelector('#tracker-auto-rest'), trackerStats: document.querySelector('#tracker-stats'),
   trackerHistory: document.querySelector('#tracker-history'), trackerDistractionCount: document.querySelector('#tracker-distraction-count'),
   messages: document.querySelector('#messages'), proposals: document.querySelector('#proposals'),
-  mentorStatus: document.querySelector('#mentor-status'), mentorContext: document.querySelector('#mentor-context'),
+  mentorContext: document.querySelector('#mentor-context'),
   composer: document.querySelector('#composer'), chatInput: document.querySelector('#chat-input'), send: document.querySelector('#send-button'),
   companionDock: document.querySelector('#companion-dock'), companionDockOrb: document.querySelector('#companion-dock-orb'),
   companionDialog: document.querySelector('#companion-dialog'), companionForm: document.querySelector('#companion-form'), companionError: document.querySelector('#companion-error'), companionName: document.querySelector('#companion-name'), companionFormSelect: document.querySelector('#companion-form-select'), companionPalette: document.querySelector('#companion-palette'), companionAccessory: document.querySelector('#companion-accessory'), companionPreviewOrb: document.querySelector('#companion-preview-orb'),
   arcadLayout: document.querySelector('#arcad-layout'), arcadContext: document.querySelector('#arcad-context'),
   arcadChatTab: document.querySelector('#arcad-chat-tab'), arcadContextTab: document.querySelector('#arcad-context-tab'), arcadContextClose: document.querySelector('#arcad-context-close'),
+  arcadHistoryTab: document.querySelector('#arcad-history-tab'), arcadNewChat: document.querySelector('#arcad-new-chat'),
+  arcadHistory: document.querySelector('#arcad-history'), arcadAsideTitle: document.querySelector('#arcad-aside-title'),
   arcadSky: document.querySelector('#arcad-sky'), arcadStars: document.querySelector('#arcad-stars'), arcadConstellations: document.querySelector('#arcad-constellations'),
   onboardingDialog: document.querySelector('#onboarding-dialog'), onboardingForm: document.querySelector('#onboarding-form'),
   onboardingClose: document.querySelector('#onboarding-close'), onboardingError: document.querySelector('#onboarding-error'),
@@ -105,7 +114,7 @@ function bindControls() {
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
     if (!elements.accountMenu.hidden) { closeAccountMenu(); elements.avatar.focus(); return; }
-    if (state.arcadContextOpen && state.activeView === 'arcad') { setArcadContextOpen(false); elements.arcadContextTab.focus(); }
+    if (state.arcadAsidePanel !== 'chat' && state.activeView === 'arcad') { setArcadAsidePanel('chat'); elements.arcadContextTab.focus(); }
   });
   document.querySelector('#life-setup-button').addEventListener('click', openLifeSetup);
   document.querySelector('#edit-life-button').addEventListener('click', () => { elements.settingsDialog.close(); openLifeSetup(); });
@@ -151,11 +160,15 @@ function bindControls() {
   elements.composer.addEventListener('submit', sendChat);
   elements.companionDock.addEventListener('pointerdown', beginCompanionDrag);
   applyCompanionPosition();
+  installCompanionTopLayer();
   elements.companionForm.addEventListener('submit', saveCompanion);
   [elements.companionName, elements.companionFormSelect, elements.companionPalette, elements.companionAccessory].forEach((input) => input.addEventListener('input', previewCompanion));
-  elements.arcadChatTab.addEventListener('click', () => setArcadContextOpen(false));
-  elements.arcadContextTab.addEventListener('click', () => setArcadContextOpen(true));
-  elements.arcadContextClose.addEventListener('click', () => { setArcadContextOpen(false); elements.arcadContextTab.focus(); });
+  elements.arcadChatTab.addEventListener('click', () => setArcadAsidePanel('chat'));
+  elements.arcadContextTab.addEventListener('click', () => setArcadAsidePanel('context'));
+  elements.arcadHistoryTab.addEventListener('click', () => setArcadAsidePanel('history'));
+  elements.arcadContextClose.addEventListener('click', () => { setArcadAsidePanel('chat'); elements.arcadContextTab.focus(); });
+  elements.arcadNewChat.addEventListener('click', startNewChat);
+  elements.arcadHistory.addEventListener('click', onHistoryClick);
   elements.mentorContext.addEventListener('input', (event) => { if (event.target.matches('.subject-context-note')) queueSubjectContextSave(event.target.closest('.subject-context-card')); });
   elements.mentorContext.addEventListener('focusout', (event) => { if (event.target.matches('.subject-context-note')) saveSubjectContextCard(event.target.closest('.subject-context-card')); });
   elements.mentorContext.addEventListener('change', (event) => {
@@ -210,24 +223,41 @@ function initializeArcadPreferences(userId) {
   state.arcadContextUserId = userId;
   try {
     const saved = JSON.parse(localStorage.getItem(`arcadia-arcad:${userId}`) || '{}');
-    state.arcadContextOpen = saved.contextOpen === true;
-  } catch { state.arcadContextOpen = false; }
-  updateArcadContextUI();
+    if (['chat', 'context', 'history'].includes(saved.asidePanel)) state.arcadAsidePanel = saved.asidePanel;
+    else state.arcadAsidePanel = saved.contextOpen === true ? 'context' : 'chat';
+    if (typeof saved.activeConversationId === 'string') state.activeConversationId = saved.activeConversationId;
+  } catch { state.arcadAsidePanel = 'chat'; }
+  updateArcadAsideUI();
 }
 
-function setArcadContextOpen(open) {
-  state.arcadContextOpen = Boolean(open);
-  updateArcadContextUI();
+function persistArcadPrefs() {
   if (!state.arcadContextUserId) return;
-  try { localStorage.setItem(`arcadia-arcad:${state.arcadContextUserId}`, JSON.stringify({ contextOpen: state.arcadContextOpen })); } catch {}
+  try {
+    localStorage.setItem(`arcadia-arcad:${state.arcadContextUserId}`, JSON.stringify({
+      asidePanel: state.arcadAsidePanel,
+      activeConversationId: state.activeConversationId
+    }));
+  } catch {}
 }
 
-function updateArcadContextUI() {
-  const open = state.arcadContextOpen;
+function setArcadAsidePanel(panel) {
+  state.arcadAsidePanel = ['chat', 'context', 'history'].includes(panel) ? panel : 'chat';
+  updateArcadAsideUI();
+  persistArcadPrefs();
+  if (state.arcadAsidePanel === 'history') renderConversations();
+}
+
+function updateArcadAsideUI() {
+  const panel = state.arcadAsidePanel;
+  const open = panel !== 'chat';
   elements.arcadLayout.classList.toggle('context-open', open);
   elements.arcadContext.setAttribute('aria-hidden', String(!open));
-  elements.arcadChatTab.setAttribute('aria-pressed', String(!open));
-  elements.arcadContextTab.setAttribute('aria-pressed', String(open));
+  elements.arcadChatTab.setAttribute('aria-pressed', String(panel === 'chat'));
+  elements.arcadContextTab.setAttribute('aria-pressed', String(panel === 'context'));
+  elements.arcadHistoryTab.setAttribute('aria-pressed', String(panel === 'history'));
+  elements.arcadAsideTitle.textContent = panel === 'history' ? 'Chat history' : 'Context';
+  elements.mentorContext.hidden = panel === 'history';
+  elements.arcadHistory.hidden = panel !== 'history';
 }
 
 async function loadDashboard() {
@@ -278,10 +308,11 @@ function renderCompanionOrb(orb, profile) {
   if (!orb || !profile) return;
   orb.dataset.form = profile.form; orb.dataset.palette = profile.palette;
   const accessory = orb.querySelector('.companion-accessory');
-  if (accessory) { accessory.className = `companion-accessory ${profile.accessory}`; accessory.textContent = profile.accessory === 'star' ? '✦' : profile.accessory === 'book' ? '▰' : ''; }
+  if (accessory) { accessory.className = `companion-accessory ${profile.accessory}`; accessory.textContent = profile.accessory === 'star' ? '' : profile.accessory === 'book' ? '▰' : ''; }
 }
 
 function renderCompanion() {
+  if (!COMPANION_ENABLED) return;
   const companion = state.data?.companion;
   if (!companion?.profile) return;
   const mood = companionState();
@@ -291,6 +322,7 @@ function renderCompanion() {
 }
 
 function setCompanionReaction(reaction) {
+  if (!COMPANION_ENABLED) return;
   state.companionReaction = reaction; clearTimeout(state.companionReactionTimer); renderCompanion();
   state.companionReactionTimer = setTimeout(() => { state.companionReaction = null; renderCompanion(); }, reaction === 'celebrating' ? 8000 : 3500);
 }
@@ -346,7 +378,37 @@ function beginCompanionDrag(pointer) {
   document.addEventListener('pointermove', move); document.addEventListener('pointerup', finish); document.addEventListener('pointercancel', cancel);
 }
 
+// Keep the companion in the browser top layer so it stays visible above any open
+// modal <dialog> (Life setup, Companion studio, task/event editors, settings…).
+function raiseCompanionDock() {
+  const dock = elements.companionDock;
+  if (!dock || typeof dock.showPopover !== 'function') return;
+  try {
+    if (dock.matches(':popover-open')) dock.hidePopover();
+    dock.showPopover();
+  } catch {}
+}
+
+function installCompanionTopLayer() {
+  if (!COMPANION_ENABLED) return;
+  const dock = elements.companionDock;
+  if (!dock || typeof dock.showPopover !== 'function') return;
+  raiseCompanionDock();
+  const proto = window.HTMLDialogElement && HTMLDialogElement.prototype;
+  if (proto && !proto.__companionRaise) {
+    const originalShowModal = proto.showModal;
+    proto.showModal = function (...args) {
+      const result = originalShowModal.apply(this, args);
+      // Re-append the companion after the dialog so it sits above the new top-layer entry.
+      raiseCompanionDock();
+      return result;
+    };
+    proto.__companionRaise = true;
+  }
+}
+
 function openCompanionStudio() {
+  if (!COMPANION_ENABLED) return;
   const profile = state.data?.companion?.profile; if (!profile) return;
   elements.companionName.value = profile.name; elements.companionFormSelect.value = profile.form; elements.companionPalette.value = profile.palette; elements.companionAccessory.value = profile.accessory; elements.companionError.textContent = ''; previewCompanion(); elements.companionDialog.showModal(); elements.companionName.focus();
 }
@@ -558,7 +620,9 @@ function renderTracker() {
   elements.trackerFace.style.setProperty('--timer-progress', `${Math.max(0, Math.min(1, progress)) * 360}deg`);
   elements.trackerStart.textContent = tracker.running ? 'Pause' : tracker.mode === 'stopwatch' && tracker.elapsed ? 'Resume' : 'Start';
   elements.trackerSkip.hidden = tracker.mode === 'stopwatch';
-  elements.trackerLiveStatus.textContent = tracker.running ? `${elements.trackerPhase.textContent} in progress` : tracker.mode === 'stopwatch' && tracker.elapsed ? 'Stopwatch paused' : tracker.mode === 'rest' ? 'Ready to rest' : 'Ready to focus';
+  const liveLabel = tracker.running ? `${elements.trackerPhase.textContent} in progress` : tracker.mode === 'stopwatch' && tracker.elapsed ? 'Stopwatch paused' : '';
+  elements.trackerLiveStatus.textContent = liveLabel;
+  elements.trackerLiveStatus.hidden = !liveLabel;
   elements.trackerLiveStatus.classList.toggle('running', tracker.running);
   [elements.trackerPreset, elements.trackerFocusMinutes, elements.trackerRestMinutes, elements.trackerCycles].forEach((control) => { control.disabled = tracker.running; });
   elements.trackerDistractionCount.textContent = String(tracker.distractions);
@@ -623,7 +687,7 @@ function renderAnalytics({ period, range, analytics }) {
     analyticsMetric('Focused time', formatDuration(analytics.focusedMinutes), analytics.focusedMinutes ? 'Completed study sessions' : 'No completed study yet'),
     analyticsMetric('Completion', `${analytics.completionRate}%`, analytics.plannedCount ? `${analytics.completedCount} of ${analytics.plannedCount} sessions` : 'No sessions in this period'),
     analyticsMetric('Completed', analytics.completedCount, analytics.completedCount === 1 ? 'Study session' : 'Study sessions'),
-    analyticsMetric('Missed', analytics.missedCount, analytics.missedCount ? 'Ready to replan' : 'Nothing missed'),
+    analyticsMetric('Missed', analytics.missedCount, analytics.missedCount === 1 ? 'Study session' : 'Study sessions'),
     analyticsMetric('Current streak', analytics.currentStreak, analytics.currentStreak === 1 ? 'Day' : 'Days'),
     analyticsMetric('Capacity left', formatDuration(analytics.capacityMinutes), 'After scheduled study blocks')
   ].join('');
@@ -1017,10 +1081,22 @@ function openAssessment(task) {
 function renderMentor() {
   const { assistant, subjects, tasks, events, user, analytics, google, subjectContexts = [] } = state.data;
   initializeArcadPreferences(user.id);
-  elements.messages.innerHTML = '';
-  const messages = assistant.messages.length ? assistant.messages : [{ role: 'assistant', content: state.data.briefing || 'Finish Life setup, then tell me what changed and I’ll update the real plan.' }];
-  messages.forEach((message) => appendMessage(message.role, message.content));
+  state.conversations = assistant.conversations || [];
+  const storedId = state.activeConversationId;
+  const storedIsValid = storedId && state.conversations.some((conversation) => conversation.id === storedId);
+  const targetId = storedIsValid ? storedId : (assistant.activeConversationId || null);
+  state.activeConversationId = targetId;
+  if (storedIsValid && targetId !== assistant.activeConversationId && state.loadedConversationId !== targetId) {
+    selectConversation(targetId, { fromRender: true });
+  } else {
+    elements.messages.innerHTML = '';
+    const messages = assistant.messages.length ? assistant.messages : [{ role: 'assistant', content: state.data.briefing || 'Finish Life setup, then tell me what changed and I’ll update your plan.' }];
+    messages.forEach((message) => appendMessage(message.role, message.content));
+    state.loadedConversationId = targetId;
+  }
   renderProposals(assistant.proposals);
+  renderConversations();
+  persistArcadPrefs();
   const openTasks = tasks.filter((task) => task.status === 'pending');
   const todayKey = dateKeyInZone(new Date(), user.timezone);
   const todayCount = events.filter((event) => dateKeyInZone(event.startAt, user.timezone) === todayKey && event.status !== 'cancelled').length;
@@ -1093,12 +1169,12 @@ async function sendChat(event) {
   state.saving = true;
   elements.chatInput.value = '';
   appendMessage('user', message);
-  const thinking = appendMessage('assistant', 'Reviewing your real plan…');
+  const thinking = appendMessage('assistant', 'Reviewing your plan…');
   elements.send.disabled = true;
   elements.composer.classList.add('sending');
   setIcon(elements.send, 'loader-circle');
   try {
-    const response = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json', ...(state.csrfToken ? { 'x-csrf-token': state.csrfToken } : {}) }, body: JSON.stringify({ message }) });
+    const response = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json', ...(state.csrfToken ? { 'x-csrf-token': state.csrfToken } : {}) }, body: JSON.stringify({ message, conversationId: state.activeConversationId }) });
     if (!response.ok) throw new Error((await response.json()).error || 'Arcad is unavailable.');
     const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let changed = false;
     while (true) {
@@ -1107,14 +1183,103 @@ async function sendChat(event) {
       const lines = buffer.split('\n'); buffer = lines.pop() || '';
       for (const line of lines) if (line.trim()) {
         const payload = JSON.parse(line);
-        if (payload.type === 'message') { thinking.textContent = payload.message.content; scrollMessagesToBottom(); changed = Boolean(payload.action || payload.proposal); }
+        if (payload.type === 'message') {
+          thinking.textContent = payload.message.content; scrollMessagesToBottom(); changed = Boolean(payload.action || payload.proposal);
+          if (payload.conversationId) { state.activeConversationId = payload.conversationId; state.loadedConversationId = payload.conversationId; }
+        }
         if (payload.type === 'error') throw new Error(payload.message);
       }
       if (done) break;
     }
+    await loadConversations();
+    persistArcadPrefs();
     if (changed) await loadDashboard();
   } catch (error) { thinking.remove(); }
   finally { state.saving = false; elements.send.disabled = false; elements.composer.classList.remove('sending'); setIcon(elements.send, 'arrow-up'); elements.chatInput.focus(); }
+}
+
+function renderConversations() {
+  const list = elements.arcadHistory;
+  if (!list) return;
+  const conversations = state.conversations || [];
+  if (!conversations.length) {
+    list.innerHTML = '<p class="arcad-history-empty">No past chats yet. Send a message to start one.</p>';
+    return;
+  }
+  list.innerHTML = conversations.map((conversation) => {
+    const active = conversation.id === state.activeConversationId;
+    const title = conversation.title || 'New chat';
+    const when = conversation.lastMessageAt || conversation.updatedAt || conversation.createdAt || '';
+    return `<div class="conversation-row${active ? ' active' : ''}" data-conversation-id="${escapeAttr(conversation.id)}" role="button" tabindex="0" aria-current="${active ? 'true' : 'false'}">
+      <h3>${escapeHtml(title)}</h3>
+      <time datetime="${escapeAttr(when)}">${escapeHtml(formatRelativeTime(when))}</time>
+      ${conversation.snippet ? `<p>${escapeHtml(conversation.snippet)}</p>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function formatRelativeTime(value) {
+  if (!value) return '';
+  const then = Date.parse(value);
+  if (Number.isNaN(then)) return '';
+  const minutes = Math.round((Date.now() - then) / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(then).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+async function loadConversations() {
+  try {
+    const data = await api('/api/conversations');
+    state.conversations = data.conversations || [];
+    renderConversations();
+  } catch (error) { toast(error.message); }
+}
+
+function onHistoryClick(event) {
+  const row = event.target.closest('[data-conversation-id]');
+  if (!row) return;
+  selectConversation(row.dataset.conversationId);
+}
+
+async function selectConversation(id, { fromRender = false } = {}) {
+  if (!id) return;
+  try {
+    const data = await api(`/api/conversations/${encodeURIComponent(id)}`);
+    state.activeConversationId = id;
+    state.loadedConversationId = id;
+    elements.messages.innerHTML = '';
+    const messages = (data.messages && data.messages.length) ? data.messages : [{ role: 'assistant', content: 'This chat is empty. Send a message to continue it.' }];
+    messages.forEach((message) => appendMessage(message.role, message.content));
+    scrollMessagesToBottom(true);
+    renderConversations();
+    persistArcadPrefs();
+    if (!fromRender && matchMedia('(max-width: 720px)').matches) setArcadAsidePanel('chat');
+    if (!fromRender) elements.chatInput.focus();
+  } catch (error) { toast(error.message); }
+}
+
+async function startNewChat() {
+  try {
+    const { conversation } = await api('/api/conversations', { method: 'POST' });
+    state.activeConversationId = conversation.id;
+    state.loadedConversationId = conversation.id;
+    state.conversations = [{
+      id: conversation.id, title: null, createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt, lastMessageAt: null, messageCount: 0, snippet: ''
+    }, ...state.conversations];
+    elements.messages.innerHTML = '';
+    appendMessage('assistant', state.data?.briefing || 'New chat. Tell me what changed and I’ll update your plan.');
+    elements.proposals.innerHTML = '';
+    renderConversations();
+    persistArcadPrefs();
+    setArcadAsidePanel('chat');
+    elements.chatInput.focus();
+  } catch (error) { toast(error.message); }
 }
 
 async function handleProposal(id, action) {
@@ -1381,12 +1546,6 @@ function drawArcadConstellations() {
     context.beginPath();
     set.lines.forEach(([from,to]) => { context.moveTo(set.stars[from][0] * bounds.width,set.stars[from][1] * bounds.height); context.lineTo(set.stars[to][0] * bounds.width,set.stars[to][1] * bounds.height); });
     context.stroke();
-    context.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--arcad-star').trim();
-    context.globalAlpha = .52;
-    context.font = '700 9px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif';
-    context.letterSpacing = '1.4px';
-    context.fillText(set.name,set.stars[0][0] * bounds.width + 8,set.stars[0][1] * bounds.height - 9);
-    context.globalAlpha = 1;
   });
 }
 

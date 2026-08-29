@@ -3,15 +3,14 @@ import dashboardScript from "../dashboard.js?raw";
 import authHtml from "../auth.html?raw";
 import authScript from "../auth.js?raw";
 import lucideIconsScript from "../lucide-icons.js?raw";
-import arcadiaLogo from "../arcadia-logo-original.png?inline";
-import arcadiaMark from "../arcadia-mark.png?inline";
 import arcadiaMarkTransparent from "../arcadia-mark-transparent.png?inline";
 import favicon from "../favicon.png?inline";
 import appleTouchIcon from "../apple-touch-icon.png?inline";
 import socialPreview from "../og-v3.png?inline";
 import {
-  completeEvent, createEvent, createSubjectFileMetadata, createTask, deleteEvent, deleteSubjectFileMetadata, ensureDatabase,
-  getAnalytics, getCompanion, getEvent, getPlannerData, getSubjectFile, listActivity, listEvents, listMessages, listPendingProposals,
+  completeEvent, createConversation, createEvent, createSubjectFileMetadata, createTask, deleteEvent, deleteSubjectFileMetadata,
+  ensureDatabase, getAnalytics, getCompanion, getConversation, getEvent, getOrCreateActiveConversation, getPlannerData,
+  getSubjectFile, listActivity, listConversationMessages, listConversations, listEvents, listMessages, listPendingProposals,
   listStudySessions, listSubjectContexts, markEventOutcome, saveOnboarding, saveStudySessions, saveSubjectContext,
   clearStudySessions, updateCompanion, updateEvent, weekRange
 } from "./db.js";
@@ -36,7 +35,7 @@ const htmlHeaders = {
 const jsonHeaders = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
 const MAX_SUBJECT_FILE_BYTES = 10 * 1024 * 1024;
 const imageAssets = new Map([
-  ["/arcadia-logo.png", arcadiaLogo], ["/arcadia-mark.png", arcadiaMark],
+  ["/arcadia-logo.png", arcadiaMarkTransparent], ["/arcadia-mark.png", arcadiaMarkTransparent],
   ["/arcadia-mark-transparent.png", arcadiaMarkTransparent], ["/favicon.png", favicon],
   ["/apple-touch-icon.png", appleTouchIcon], ["/og.png", socialPreview],
   ["/og-v2.png", socialPreview], ["/og-v3.png", socialPreview]
@@ -95,11 +94,13 @@ async function routeApi(request, env, context, url, authenticatedUser, csrfToken
   if (method === "GET" && path === "/api/dashboard") {
     const range = weekRange(url.searchParams.get("date") || new Date());
     const planner = await getPlannerData(env, authenticatedUser.id);
-    const [events, analytics, google, messages, proposals, activity, subjectContexts] = await Promise.all([
+    const activeConversation = await getOrCreateActiveConversation(env, authenticatedUser.id);
+    const [events, analytics, google, messages, conversations, proposals, activity, subjectContexts] = await Promise.all([
       listEvents(env, authenticatedUser.id, range.start, range.end),
       getAnalytics(env, authenticatedUser.id, range.start, range.end),
       getGoogleStatus(env, authenticatedUser.id),
-      listMessages(env, authenticatedUser.id, 24),
+      listConversationMessages(env, authenticatedUser.id, activeConversation.id, 50),
+      listConversations(env, authenticatedUser.id, 50),
       listPendingProposals(env, authenticatedUser.id),
       listActivity(env, authenticatedUser.id, { start: new Date(Date.now() - 14 * 86_400_000).toISOString(), limit: 30 }),
       listSubjectContexts(env, authenticatedUser.id)
@@ -122,7 +123,12 @@ async function routeApi(request, env, context, url, authenticatedUser, csrfToken
       briefing: planner.profile?.onboardingComplete ? buildBriefing({ ...planner, events, now: new Date() }) : null,
       google,
       studySessions: await listStudySessions(env, authenticatedUser.id), csrfToken,
-      assistant: { configured: mentorAvailable(env), providerConfigured: Boolean(env.OPENAI_API_KEY), messages, proposals }
+      assistant: {
+        configured: mentorAvailable(env),
+        providerConfigured: Boolean(env.OPENAI_API_KEY),
+        messages, proposals, conversations,
+        activeConversationId: activeConversation.id
+      }
     });
   }
 
@@ -285,10 +291,32 @@ async function routeApi(request, env, context, url, authenticatedUser, csrfToken
     return json({ ok: true });
   }
 
-  if (method === "GET" && path === "/api/chat") return json({ messages: await listMessages(env, authenticatedUser.id), proposals: await listPendingProposals(env, authenticatedUser.id) });
+  if (method === "GET" && path === "/api/chat") {
+    const active = await getOrCreateActiveConversation(env, authenticatedUser.id);
+    return json({
+      conversationId: active.id,
+      messages: await listConversationMessages(env, authenticatedUser.id, active.id, 200),
+      proposals: await listPendingProposals(env, authenticatedUser.id)
+    });
+  }
   if (method === "POST" && path === "/api/chat") {
     const body = await readJson(request);
-    return chatStream(env, authenticatedUser, body.message, context);
+    return chatStream(env, authenticatedUser, body.message, context,
+      typeof body.conversationId === "string" ? body.conversationId : null);
+  }
+  if (method === "GET" && path === "/api/conversations") {
+    return json({ conversations: await listConversations(env, authenticatedUser.id, 50) });
+  }
+  if (method === "POST" && path === "/api/conversations") {
+    const conversation = await createConversation(env, authenticatedUser.id, {});
+    return json({ conversation }, 201);
+  }
+  const conversationMatch = path.match(/^\/api\/conversations\/([^/]+)$/);
+  if (conversationMatch && method === "GET") {
+    const id = decodeURIComponent(conversationMatch[1]);
+    const conversation = await getConversation(env, authenticatedUser.id, id);
+    if (!conversation) return json({ error: "Conversation not found." }, 404);
+    return json({ conversation, messages: await listConversationMessages(env, authenticatedUser.id, id, 200) });
   }
   const proposalMatch = path.match(/^\/api\/proposals\/([^/]+)\/(apply|decline)$/);
   if (proposalMatch && method === "POST") {

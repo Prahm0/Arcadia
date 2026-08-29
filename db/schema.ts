@@ -200,11 +200,21 @@ export const schemaStatements = [
     code_verifier TEXT NOT NULL,
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS chat_conversations (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_message_at TEXT,
+    FOREIGN KEY (user_id) REFERENCES profiles(user_id) ON DELETE CASCADE
+  )`,
   `CREATE TABLE IF NOT EXISTS chat_messages (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
     content TEXT NOT NULL,
+    conversation_id TEXT,
     created_at TEXT NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS subject_contexts (
@@ -261,6 +271,8 @@ export const schemaStatements = [
   `CREATE INDEX IF NOT EXISTS idx_sessions_user_started ON study_sessions(user_id, started_at)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_user_client ON study_sessions(user_id, client_id)`,
   `CREATE INDEX IF NOT EXISTS idx_messages_user_created ON chat_messages(user_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_conversations_user_activity ON chat_conversations(user_id, last_message_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON chat_messages(conversation_id, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_proposals_user_status ON proposals(user_id, status, created_at)`
   ,`CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_email_normalized ON accounts(email_normalized)`
   ,`CREATE INDEX IF NOT EXISTS idx_auth_tokens_lookup ON auth_tokens(kind, email_normalized, expires_at)`

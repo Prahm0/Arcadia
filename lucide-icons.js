@@ -34,11 +34,7 @@ const PanelLeftOpen = [
   ['path', { d: 'M9 3v18' }], ['path', { d: 'm14 9 3 3-3 3' }]
 ];
 const Paperclip = [['path', { d: 'm16 6-7.414 7.414a2 2 0 0 0 2.828 2.828L19 8.657a4 4 0 0 0-5.657-5.657L5.757 10.586a6 6 0 1 0 8.486 8.485L21 12.314' }]];
-const Sparkles = [
-  ['path', { d: 'M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z' }],
-  ['path', { d: 'M20 2v4' }], ['path', { d: 'M22 4h-4' }],
-  ['circle', { cx: '4', cy: '20', r: '2' }]
-];
+const MessageCircle = [['path', { d: 'M7.9 20A9 9 0 1 0 4 16.1L2 22z' }]];
 const Sun = [
   ['circle', { cx: '12', cy: '12', r: '4' }], ['path', { d: 'M12 2v2' }],
   ['path', { d: 'M12 20v2' }], ['path', { d: 'm4.93 4.93 1.41 1.41' }],
@@ -58,6 +54,16 @@ const Users = [
   ['path', { d: 'M16 3.13a4 4 0 0 1 0 7.75' }]
 ];
 const X = [['path', { d: 'M18 6 6 18' }], ['path', { d: 'm6 6 12 12' }]];
+const SquarePen = [
+  ['path', { d: 'M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' }],
+  ['path', { d: 'M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z' }]
+];
+const History = [
+  ['path', { d: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8' }],
+  ['path', { d: 'M3 3v5h5' }],
+  ['path', { d: 'M12 7v5l4 2' }]
+];
+const LoaderCircle = [['path', { d: 'M21 12a9 9 0 1 1-6.219-8.56' }]];
 
 const svgNamespace = 'http://www.w3.org/2000/svg';
 
@@ -88,7 +94,8 @@ window.ArcadiaLucide = {
   createIcons,
   icons: {
     ArrowUp, CalendarDays, ChartNoAxesColumnIncreasing, Check, ChevronLeft, ChevronRight, House, Moon,
-    PanelLeftClose, PanelLeftOpen, Paperclip, Sparkles, Sun, Timer, Users, X
+    PanelLeftClose, PanelLeftOpen, MessageCircle, Paperclip, Sun, Timer, Users, X,
+    SquarePen, History, LoaderCircle
   }
 };
 })();

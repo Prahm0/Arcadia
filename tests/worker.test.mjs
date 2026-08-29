@@ -86,8 +86,8 @@ test("uses all six Arcadia destinations in the intended navigation order", async
   assert.match(html, /data-view-panel="analytics"[^>]*hidden/);
   assert.match(html, /data-view-panel="study-group"[^>]*hidden/);
   assert.match(html, /data-view-panel="arcad"[^>]*hidden/);
-  assert.match(html, /Create group · Coming soon/);
-  assert.match(html, /Join group · Coming soon/);
+  assert.match(html, /Create group/);
+  assert.match(html, /Join group/);
   assert.match(html, /id="onboarding-dialog"/);
 });
 
@@ -155,13 +155,13 @@ test("offers ten persisted themes including Vanta Black", async () => {
   for (const [theme, [canvas]] of Object.entries(palettes)) assert.match(script, new RegExp(`${theme}: '${canvas}'`));
 });
 
-test("ships the borderless, accessible Arcad sky and pill composer", async () => {
+test("ships the borderless, accessible Arcad sky and composer", async () => {
   const env = testEnv(); const page = await worker.fetch(new Request("https://arcadia.test/", { headers: await authHeaders(env, "arcad-ui") }), env, {});
   const html = await page.text();
   assert.match(html, /id="arcad-sky"[^>]*aria-hidden="true"/);
   assert.match(html, /id="arcad-constellations"/);
   assert.match(html, /class="composer"[\s\S]*Message Arcad/);
-  assert.match(html, /\.composer \{[^}]*border-radius: 999px/);
+  assert.match(html, /\.composer \{[^}]*border-radius: var\(--r-lg\)/);
   assert.match(html, /\.arcad-star\.four/);
   assert.match(html, /\.arcad-star\.six/);
   assert.match(html, /\.arcad-star\.halo/);
@@ -535,6 +535,94 @@ test("required student journey persists, schedules, completes, misses, adapts an
   assert.ok(trainingPayloads.some((payload) => payload.action?.intent === "UPDATE_COMMITMENT_TIME"));
   const afterTraining = await getPlannerData(env, userId);
   assert.ok(afterTraining.commitments.filter((item) => item.category === "sport").every((item) => item.startTime === "18:00"));
+});
+
+const chatFrames = async (response) => (await response.text()).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+const sendChat = (env, headers, message, conversationId) => worker.fetch(new Request("https://arcadia.test/api/chat", {
+  method: "POST", headers, body: JSON.stringify(conversationId ? { message, conversationId } : { message })
+}), env, {});
+
+test("groups Arcad messages into conversations with new-chat and history support", async () => {
+  const env = testEnv();
+  const headers = await authHeaders(env, "chat-log", true);
+
+  const first = await sendChat(env, headers, "I have a biology report due Thursday that needs about two hours.");
+  assert.equal(first.status, 200);
+  const firstFrames = await chatFrames(first);
+  const firstMessage = firstFrames.find((frame) => frame.type === "message");
+  assert.ok(firstMessage, "first send should emit a message frame");
+  const conversationId = firstMessage.conversationId;
+  assert.ok(conversationId, "message frame carries a conversationId");
+
+  let dashboard = await (await worker.fetch(new Request("https://arcadia.test/api/dashboard", { headers }), env, {})).json();
+  assert.equal(dashboard.assistant.activeConversationId, conversationId);
+  assert.equal(dashboard.assistant.conversations.length, 1);
+  assert.ok(dashboard.assistant.messages.some((m) => m.role === "user"));
+  assert.ok(dashboard.assistant.messages.some((m) => m.role === "assistant"));
+  assert.ok(dashboard.assistant.conversations[0].title, "conversation is auto-titled from the first user message");
+
+  const second = await sendChat(env, headers, "Actually make that three hours.", conversationId);
+  const secondMessage = (await chatFrames(second)).find((frame) => frame.type === "message");
+  assert.equal(secondMessage.conversationId, conversationId, "reply stays in the same conversation");
+  let list = await (await worker.fetch(new Request("https://arcadia.test/api/conversations", { headers }), env, {})).json();
+  assert.equal(list.conversations.length, 1);
+  assert.equal(list.conversations[0].messageCount, 4);
+
+  const created = await worker.fetch(new Request("https://arcadia.test/api/conversations", { method: "POST", headers }), env, {});
+  assert.equal(created.status, 201);
+  const { conversation: fresh } = await created.json();
+  assert.notEqual(fresh.id, conversationId);
+
+  const third = await sendChat(env, headers, "Different topic: help me plan revision.", fresh.id);
+  assert.equal((await chatFrames(third)).find((frame) => frame.type === "message").conversationId, fresh.id);
+
+  list = await (await worker.fetch(new Request("https://arcadia.test/api/conversations", { headers }), env, {})).json();
+  assert.equal(list.conversations.length, 2);
+  assert.equal(list.conversations[0].id, fresh.id, "most recent conversation is first");
+
+  const original = await (await worker.fetch(new Request(`https://arcadia.test/api/conversations/${conversationId}`, { headers }), env, {})).json();
+  assert.equal(original.messages.length, 4);
+  assert.ok(original.messages.every((m) => typeof m.content === "string"));
+  const other = await (await worker.fetch(new Request(`https://arcadia.test/api/conversations/${fresh.id}`, { headers }), env, {})).json();
+  assert.equal(other.messages.length, 2, "messages are isolated per conversation");
+});
+
+test("auto-titles long first messages with a capped summary", async () => {
+  const env = testEnv();
+  const headers = await authHeaders(env, "chat-title", true);
+  const longMessage = "I need help scheduling revision across biology chemistry physics and further maths before exams";
+  await chatFrames(await sendChat(env, headers, longMessage));
+  const list = await (await worker.fetch(new Request("https://arcadia.test/api/conversations", { headers }), env, {})).json();
+  const title = list.conversations[0].title;
+  assert.ok(title.length <= 48, `title should be capped, got ${title.length}`);
+  assert.ok(title.endsWith("…"), "capped title ends with an ellipsis");
+  assert.ok(longMessage.startsWith(title.slice(0, -1)), "title is a prefix of the message");
+});
+
+test("adopts pre-existing flat chat history into one conversation", async () => {
+  const env = testEnv();
+  const headers = await authHeaders(env, "chat-backfill", true);
+  const now = Date.now();
+  const insert = (role, content, offset) => env.DB.prepare(
+    "INSERT INTO chat_messages (id, user_id, conversation_id, role, content, created_at) VALUES (?, ?, NULL, ?, ?, ?)"
+  ).bind(crypto.randomUUID(), "chat-backfill", role, content, new Date(now + offset).toISOString()).run();
+  await insert("user", "Legacy question about my timetable", 0);
+  await insert("assistant", "Legacy answer from Arcad", 1000);
+
+  const dashboard = await (await worker.fetch(new Request("https://arcadia.test/api/dashboard", { headers }), env, {})).json();
+  assert.equal(dashboard.assistant.conversations.length, 1);
+  assert.equal(dashboard.assistant.messages.length, 2);
+  assert.deepEqual(dashboard.assistant.messages.map((m) => m.role), ["user", "assistant"]);
+  assert.equal(dashboard.assistant.conversations[0].title, "Legacy question about my timetable");
+});
+
+test("keeps conversations private to their owner", async () => {
+  const env = testEnv();
+  const ownerHeaders = await authHeaders(env, "conv-owner", true);
+  const intruderHeaders = await authHeaders(env, "conv-intruder", true);
+  const { conversation } = await (await worker.fetch(new Request("https://arcadia.test/api/conversations", { method: "POST", headers: ownerHeaders }), env, {})).json();
+  const stolen = await worker.fetch(new Request(`https://arcadia.test/api/conversations/${conversation.id}`, { headers: intruderHeaders }), env, {});
+  assert.equal(stolen.status, 404);
 });
 
 function futureWeekday(weekday, minimumDays) {

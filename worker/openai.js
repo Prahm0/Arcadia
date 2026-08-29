@@ -1,7 +1,7 @@
 import {
-  addTaskTime, createCommitment, createProposal, createTask, getAnalytics, getEvent, getPlannerData, getProposal,
-  getTask, listActivity, listEvents, listMessages, listSubjectContexts, markEventOutcome, saveMessage, setProposalStatus,
-  updateCommitmentTime, weekRange
+  addTaskTime, createCommitment, createProposal, createTask, getAnalytics, getEvent, getOrCreateActiveConversation,
+  getPlannerData, getProposal, getTask, listActivity, listConversationMessages, listEvents, listSubjectContexts,
+  markEventOutcome, saveMessage, setProposalStatus, touchConversation, updateCommitmentTime, weekRange
 } from "./db.js";
 import { publishArcadiaEvent } from "./google.js";
 import { dateKeyInZone, parseDuePhrase, rebuildSchedule } from "./scheduler.js";
@@ -81,7 +81,7 @@ const tools = [
 export function openAIConfigured(env) { return Boolean(env.OPENAI_API_KEY); }
 export function mentorAvailable() { return true; }
 
-export function chatStream(env, user, message, executionContext) {
+export function chatStream(env, user, message, executionContext, conversationId = null) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -90,7 +90,9 @@ export function chatStream(env, user, message, executionContext) {
         const clean = String(message || "").trim();
         if (!clean || clean.length > MAX_MESSAGE_LENGTH) throw new Error("Enter a message between 1 and 2,000 characters.");
         emit({ type: "status", value: "thinking" });
-        await saveMessage(env, user.id, "user", clean);
+        const conversation = await getOrCreateActiveConversation(env, user.id, conversationId);
+        await saveMessage(env, user.id, "user", clean, conversation.id);
+        await touchConversation(env, user.id, conversation.id, { autoTitleFrom: clean });
 
         const range = weekRange();
         const [planner, events, analytics, activity, subjectKnowledge] = await Promise.all([
@@ -101,8 +103,9 @@ export function chatStream(env, user, message, executionContext) {
         ]);
         const localAction = await interpretLocalAction(env, user.id, clean, planner, events, executionContext);
         if (localAction) {
-          const saved = await saveMessage(env, user.id, "assistant", localAction.message);
-          emit({ type: "message", message: saved, action: localAction.action, schedule: localAction.schedule });
+          const saved = await saveMessage(env, user.id, "assistant", localAction.message, conversation.id);
+          await touchConversation(env, user.id, conversation.id);
+          emit({ type: "message", message: saved, conversationId: conversation.id, action: localAction.action, schedule: localAction.schedule });
           return;
         }
 
@@ -117,12 +120,13 @@ export function chatStream(env, user, message, executionContext) {
         };
         if (!openAIConfigured(env)) {
           const text = contextualFallback(clean, context);
-          const saved = await saveMessage(env, user.id, "assistant", text);
-          emit({ type: "message", message: saved, action: null });
+          const saved = await saveMessage(env, user.id, "assistant", text, conversation.id);
+          await touchConversation(env, user.id, conversation.id);
+          emit({ type: "message", message: saved, conversationId: conversation.id, action: null });
           return;
         }
 
-        const history = await listMessages(env, user.id, 12);
+        const history = await listConversationMessages(env, user.id, conversation.id, 12);
         const input = history.map((item) => ({ role: item.role, content: item.content }));
         let proposal = null;
         let appliedAction = null;
@@ -151,8 +155,9 @@ export function chatStream(env, user, message, executionContext) {
           }
         }
         const text = response?.output_text || extractOutputText(response) || appliedAction?.message || (proposal ? `I prepared “${proposal.summary}” for your review.` : contextualFallback(clean, context));
-        const saved = await saveMessage(env, user.id, "assistant", text);
-        emit({ type: "message", message: saved, proposal, action: appliedAction?.action || null, schedule: appliedAction?.schedule || null });
+        const saved = await saveMessage(env, user.id, "assistant", text, conversation.id);
+        await touchConversation(env, user.id, conversation.id);
+        emit({ type: "message", message: saved, conversationId: conversation.id, proposal, action: appliedAction?.action || null, schedule: appliedAction?.schedule || null });
       } catch (error) {
         console.error("Arcad failed", error?.message);
         emit({ type: "error", message: error.message || "Arcad is temporarily unavailable." });
