@@ -65,6 +65,8 @@ export const schemaStatements = [
     preferred_session_minutes INTEGER NOT NULL DEFAULT 60 CHECK (preferred_session_minutes BETWEEN 25 AND 120),
     break_minutes INTEGER NOT NULL DEFAULT 15 CHECK (break_minutes BETWEEN 5 AND 60),
     theme TEXT NOT NULL DEFAULT 'light' CHECK (length(theme) BETWEEN 1 AND 32),
+    navigation_layout TEXT NOT NULL DEFAULT 'sidebar' CHECK (navigation_layout IN ('sidebar', 'topbar')),
+    sidebar_collapsed INTEGER NOT NULL DEFAULT 0 CHECK (sidebar_collapsed IN (0, 1)),
     updated_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES profiles(user_id) ON DELETE CASCADE
   )`,
@@ -259,6 +261,12 @@ export const schemaStatements = [
     updated_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES profiles(user_id) ON DELETE CASCADE
   )`,
+  `CREATE TABLE IF NOT EXISTS analytics_settings (
+    user_id TEXT PRIMARY KEY,
+    settings_json TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES profiles(user_id) ON DELETE CASCADE
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_events_user_start ON events(user_id, start_at)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_events_external ON events(user_id, calendar_id, external_id) WHERE external_id IS NOT NULL`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_events_commitment_occurrence ON events(user_id, commitment_id, occurrence_key) WHERE commitment_id IS NOT NULL`,
@@ -280,4 +288,5 @@ export const schemaStatements = [
   ,`CREATE INDEX IF NOT EXISTS idx_subject_contexts_user ON subject_contexts(user_id, updated_at)`
   ,`CREATE INDEX IF NOT EXISTS idx_subject_files_user_subject ON subject_files(user_id, subject_id, created_at)`
   ,`CREATE INDEX IF NOT EXISTS idx_companion_profiles_updated ON companion_profiles(updated_at)`
+  ,`CREATE INDEX IF NOT EXISTS idx_analytics_settings_updated ON analytics_settings(updated_at)`
 ] as const;

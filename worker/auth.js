@@ -80,9 +80,13 @@ export async function handleAccountRoute(request, env, url, auth) {
     const name = cleanText(body.name, 80); const theme = cleanText(body.theme, 20);
     if (body.name !== undefined && !name) throw httpError(400, "Add a name for your account.");
     if (body.theme !== undefined && !THEMES.includes(theme)) throw httpError(400, "Choose a valid theme.");
+    if (body.navigationLayout !== undefined && !["sidebar", "topbar"].includes(body.navigationLayout)) throw httpError(400, "Choose Sidebar or Top bar.");
+    if (body.sidebarCollapsed !== undefined && typeof body.sidebarCollapsed !== "boolean") throw httpError(400, "Choose a valid sidebar state.");
     const now = new Date().toISOString(); const statements = [];
     if (body.name !== undefined) statements.push(env.DB.prepare("UPDATE profiles SET display_name = ?, updated_at = ? WHERE user_id = ?").bind(name, now, userId));
     if (body.theme !== undefined) statements.push(env.DB.prepare("UPDATE user_preferences SET theme = ?, updated_at = ? WHERE user_id = ?").bind(theme, now, userId));
+    if (body.navigationLayout !== undefined) statements.push(env.DB.prepare("UPDATE user_preferences SET navigation_layout = ?, updated_at = ? WHERE user_id = ?").bind(body.navigationLayout, now, userId));
+    if (body.sidebarCollapsed !== undefined) statements.push(env.DB.prepare("UPDATE user_preferences SET sidebar_collapsed = ?, updated_at = ? WHERE user_id = ?").bind(Number(body.sidebarCollapsed), now, userId));
     if (statements.length) await env.DB.batch(statements);
     return apiJson({ account: await accountView(env, userId) });
   }
@@ -250,9 +254,11 @@ async function getAccount(env, userId) {
 }
 
 async function accountView(env, userId) {
-  return env.DB.prepare(`SELECT a.email, p.display_name AS name, p.grade, p.timezone, up.theme,
+  const row = await env.DB.prepare(`SELECT a.email, p.display_name AS name, p.grade, p.timezone, up.theme,
+    up.navigation_layout AS navigationLayout, up.sidebar_collapsed AS sidebarCollapsed,
     a.email_verified_at AS emailVerifiedAt, a.created_at AS createdAt
     FROM accounts a JOIN profiles p ON p.user_id = a.user_id LEFT JOIN user_preferences up ON up.user_id = a.user_id WHERE a.user_id = ?`).bind(userId).first();
+  return row ? { ...row, sidebarCollapsed: Boolean(row.sidebarCollapsed) } : null;
 }
 
 async function deleteAccountData(env, userId) {

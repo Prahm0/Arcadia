@@ -1,5 +1,8 @@
 import dashboardHtml from "../dashboard.html?raw";
 import dashboardScript from "../dashboard.js?raw";
+import analyticsViewScript from "../analytics-view.js?raw";
+import navigationScript from "../navigation.js?raw";
+import navigationStyles from "../navigation.css?raw";
 import authHtml from "../auth.html?raw";
 import authScript from "../auth.js?raw";
 import lucideIconsScript from "../lucide-icons.js?raw";
@@ -10,10 +13,16 @@ import socialPreview from "../og-v3.png?inline";
 import {
   completeEvent, createConversation, createEvent, createSubjectFileMetadata, createTask, deleteEvent, deleteSubjectFileMetadata,
   ensureDatabase, getAnalytics, getCompanion, getConversation, getEvent, getOrCreateActiveConversation, getPlannerData,
-  getSubjectFile, listActivity, listConversationMessages, listConversations, listEvents, listMessages, listPendingProposals,
-  listStudySessions, listSubjectContexts, markEventOutcome, saveOnboarding, saveStudySessions, saveSubjectContext,
+  getAnalyticsSettingsRow, getSubjectFile, listActivity, listConversationMessages, listConversations, listEvents,
+  listMessages, listPendingProposals, listStudyEntries, listStudySessions, listSubjectContexts, markEventOutcome,
+  saveAnalyticsSettings, saveOnboarding, saveStudySessions, saveSubjectContext,
   clearStudySessions, updateCompanion, updateEvent, weekRange
 } from "./db.js";
+import {
+  bucketDailyStudy, bucketHourlyStudy, dateKeyInZone as analyticsDateKey, intensityThresholds,
+  parseAnalyticsSettings, shiftDateKey as shiftAnalyticsKey, subjectTotals, summariseStreaks,
+  validateAnalyticsSettings
+} from "./analytics.js";
 import {
   beginGoogleOAuth, disconnectGoogle, finishGoogleOAuth, getGoogleStatus, publishArcadiaEvent,
   removePublishedEvent, syncGoogleCalendars
@@ -46,6 +55,9 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/auth.js") return new Response(authScript, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "private, no-store" } });
     if (url.pathname === "/dashboard.js") return new Response(dashboardScript, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "private, no-store" } });
+    if (url.pathname === "/analytics-view.js") return new Response(analyticsViewScript, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "private, no-store" } });
+    if (url.pathname === "/navigation.js") return new Response(navigationScript, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "private, no-store" } });
+    if (url.pathname === "/navigation.css") return new Response(navigationStyles, { headers: { "content-type": "text/css; charset=utf-8", "cache-control": "private, no-store" } });
     if (url.pathname === "/lucide-icons.js") return new Response(lucideIconsScript, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "private, no-store" } });
     const imageAsset = imageAssets.get(url.pathname);
     if (imageAsset) return new Response(decodeDataUrl(imageAsset), { headers: { "cache-control": "public, max-age=31536000, immutable", "content-type": "image/png" } });
@@ -123,6 +135,7 @@ async function routeApi(request, env, context, url, authenticatedUser, csrfToken
       briefing: planner.profile?.onboardingComplete ? buildBriefing({ ...planner, events, now: new Date() }) : null,
       google,
       studySessions: await listStudySessions(env, authenticatedUser.id), csrfToken,
+      analyticsSettings: parseAnalyticsSettings(await getAnalyticsSettingsRow(env, authenticatedUser.id)),
       assistant: {
         configured: mentorAvailable(env),
         providerConfigured: Boolean(env.OPENAI_API_KEY),
@@ -166,8 +179,71 @@ async function routeApi(request, env, context, url, authenticatedUser, csrfToken
     const planner = await getPlannerData(env, authenticatedUser.id);
     const timezone = planner.profile?.timezone || "Australia/Sydney";
     const range = analyticsRange(url.searchParams.get("date") || new Date(), period, timezone);
-    const analytics = await getAnalytics(env, authenticatedUser.id, range.start, range.end, range.days);
-    return json({ period, range: { start: range.start, end: range.end }, analytics });
+    const startKey = analyticsDateKey(range.start, timezone);
+    const previousStartKey = shiftAnalyticsKey(startKey, -range.days);
+    const previousStart = zonedDateTime(previousStartKey, "00:00", timezone).toISOString();
+
+    const [analytics, entries, previousEntries, settingsJson] = await Promise.all([
+      getAnalytics(env, authenticatedUser.id, range.start, range.end, range.days),
+      listStudyEntries(env, authenticatedUser.id, range.start, range.end),
+      listStudyEntries(env, authenticatedUser.id, previousStart, range.start),
+      getAnalyticsSettingsRow(env, authenticatedUser.id)
+    ]);
+
+    const daily = bucketDailyStudy(entries, timezone, startKey, range.days);
+    const previousDaily = bucketDailyStudy(previousEntries, timezone, previousStartKey, range.days);
+    const streaks = summariseStreaks(daily, analyticsDateKey(new Date(), timezone));
+    return json({
+      period,
+      range: { start: range.start, end: range.end },
+      analytics,
+      timezone,
+      daily,
+      previousDaily,
+      hourly: bucketHourlyStudy(entries, timezone),
+      subjects: subjectTotals(entries),
+      streaks,
+      previous: summarisePeriod(previousDaily),
+      current: summarisePeriod(daily),
+      settings: parseAnalyticsSettings(settingsJson)
+    });
+  }
+
+  if (method === "GET" && path === "/api/analytics/heatmap") {
+    const planner = await getPlannerData(env, authenticatedUser.id);
+    const timezone = planner.profile?.timezone || "Australia/Sydney";
+    const requestedEnd = url.searchParams.get("end");
+    const endDate = requestedEnd ? new Date(requestedEnd) : new Date();
+    if (Number.isNaN(endDate.valueOf())) throw badRequest("Choose a valid analytics date.");
+    const days = clampInt(url.searchParams.get("days"), 1, 371, 371);
+
+    // The window ends at the close of the anchor day, so today is always the last cell.
+    const endKey = shiftAnalyticsKey(analyticsDateKey(endDate, timezone), 1);
+    const startKey = shiftAnalyticsKey(endKey, -days);
+    const start = zonedDateTime(startKey, "00:00", timezone).toISOString();
+    const end = zonedDateTime(endKey, "00:00", timezone).toISOString();
+
+    const entries = await listStudyEntries(env, authenticatedUser.id, start, end, 8000);
+    const daily = bucketDailyStudy(entries, timezone, startKey, days);
+    const minuteValues = daily.map((row) => row.minutes);
+    const sessionValues = daily.map((row) => row.sessions);
+    return json({
+      timezone, start, end, days: daily,
+      max: { minutes: Math.max(0, ...minuteValues), sessions: Math.max(0, ...sessionValues) },
+      thresholds: { minutes: intensityThresholds(minuteValues), sessions: intensityThresholds(sessionValues) },
+      streaks: summariseStreaks(daily, analyticsDateKey(new Date(), timezone))
+    });
+  }
+
+  if (method === "GET" && path === "/api/analytics/settings") {
+    return json({ settings: parseAnalyticsSettings(await getAnalyticsSettingsRow(env, authenticatedUser.id)) });
+  }
+
+  if (method === "PATCH" && path === "/api/analytics/settings") {
+    const stored = parseAnalyticsSettings(await getAnalyticsSettingsRow(env, authenticatedUser.id));
+    const settings = validateAnalyticsSettings(await readJson(request), stored);
+    await saveAnalyticsSettings(env, authenticatedUser.id, settings);
+    return json({ settings });
   }
 
   if (method === "GET" && path === "/api/study-sessions") return json({ sessions: await listStudySessions(env, authenticatedUser.id) });
@@ -484,6 +560,21 @@ export function analyticsRange(value, period = "week", timezone = "Australia/Syd
     start: zonedDateTime(startKey, "00:00", timezone).toISOString(),
     end: zonedDateTime(endKey, "00:00", timezone).toISOString(),
     days
+  };
+}
+
+/** Period totals used for the "vs previous period" deltas on the analytics widgets. */
+function summarisePeriod(dailyRows) {
+  const rows = dailyRows || [];
+  const minutes = rows.reduce((sum, row) => sum + row.minutes, 0);
+  const completedCount = rows.reduce((sum, row) => sum + row.completedCount, 0);
+  const missedCount = rows.reduce((sum, row) => sum + row.missedCount, 0);
+  const plannedMinutes = rows.reduce((sum, row) => sum + row.plannedMinutes, 0);
+  const denominator = completedCount + missedCount;
+  return {
+    minutes, completedCount, missedCount, plannedMinutes,
+    activeDays: rows.filter((row) => row.minutes > 0).length,
+    completionRate: denominator ? Math.round((completedCount / denominator) * 100) : 0
   };
 }
 

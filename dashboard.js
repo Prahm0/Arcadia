@@ -22,6 +22,7 @@ const state = {
   analyticsDate: new Date(),
   analyticsPeriod: 'day',
   analyticsRequest: 0,
+  analyticsSettings: null,
   tracker: { initialized: false, userId: null, mode: 'focus', phase: 'focus', running: false, remaining: 1500, total: 1500, elapsed: 0, baseValue: 0, startedAt: 0, cycle: 1, distractions: 0, history: [], interval: null, storageKey: null },
   activeView: 'today',
   calendarView: matchMedia('(max-width: 720px)').matches ? 'day' : 'week',
@@ -52,9 +53,9 @@ const elements = {
   weekLabel: document.querySelector('#week-label'), weekBoard: document.querySelector('#week-board'),
   calendarViewButtons: [...document.querySelectorAll('[data-calendar-view]')], calendarFilterButtons: [...document.querySelectorAll('[data-filter]')],
   calendarAddEvent: document.querySelector('#calendar-add-event'), calendarAddTask: document.querySelector('#calendar-add-task'),
-  analyticsContent: document.querySelector('#analytics-content'), analyticsMetrics: document.querySelector('#analytics-metrics'),
-  analyticsRangeLabel: document.querySelector('#analytics-range-label'), subjectDistribution: document.querySelector('#subject-distribution'),
-  analyticsNote: document.querySelector('#analytics-note'), analyticsPeriodButtons: [...document.querySelectorAll('[data-analytics-period]')],
+  analyticsContent: document.querySelector('#analytics-content'), analyticsBoard: document.querySelector('#analytics-board'),
+  analyticsRangeLabel: document.querySelector('#analytics-range-label'),
+  analyticsPeriodButtons: [...document.querySelectorAll('[data-analytics-period]')],
   trackerModeButtons: [...document.querySelectorAll('[data-tracker-mode]')], trackerSubject: document.querySelector('#tracker-subject'),
   trackerGoal: document.querySelector('#tracker-goal'), trackerFace: document.querySelector('#tracker-face'), trackerPhase: document.querySelector('#tracker-phase'),
   trackerClock: document.querySelector('#tracker-clock'), trackerCycle: document.querySelector('#tracker-cycle'), trackerLiveStatus: document.querySelector('#tracker-live-status'),
@@ -86,22 +87,20 @@ const elements = {
 };
 
 document.documentElement.dataset.theme = preferredTheme();
+const navigation = window.ArcadiaNavigation.initialise({
+  api, toast, setIcon, closeAccountMenu,
+  onSaved(value) { if (state.data?.preferences) Object.assign(state.data.preferences, value); }
+});
 bindControls();
 renderIcons();
 requestAnimationFrame(createArcadSky);
+scheduleArcadMeteor();
 activateView(viewFromHash());
 loadDashboard();
 
 function bindControls() {
   updateThemeControls();
   elements.themeSelect.addEventListener('change', () => saveTheme(elements.themeSelect.value));
-  document.querySelector('#rail-toggle').addEventListener('click', () => {
-    const open = elements.shell.classList.toggle('rail-open');
-    const button = document.querySelector('#rail-toggle');
-    button.setAttribute('aria-expanded', String(open));
-    button.setAttribute('aria-label', open ? 'Collapse navigation' : 'Expand navigation');
-    setIcon(button, open ? 'panel-left-close' : 'panel-left-open');
-  });
   elements.viewButtons.forEach((button) => button.addEventListener('click', () => { location.hash = button.dataset.view; }));
   window.addEventListener('hashchange', () => activateView(viewFromHash()));
   let arcadResizeTimer;
@@ -112,7 +111,7 @@ function bindControls() {
   document.querySelector('#account-sign-out-button').addEventListener('click', () => signOut(false));
   document.addEventListener('click', (event) => { if (!event.target.closest('.avatar-wrap')) closeAccountMenu(); });
   document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
     if (!elements.accountMenu.hidden) { closeAccountMenu(); elements.avatar.focus(); return; }
     if (state.arcadAsidePanel !== 'chat' && state.activeView === 'arcad') { setArcadAsidePanel('chat'); elements.arcadContextTab.focus(); }
   });
@@ -266,7 +265,9 @@ async function loadDashboard() {
     const data = await api(`/api/dashboard?date=${encodeURIComponent(state.anchorDate.toISOString())}`);
     state.data = data;
     state.csrfToken = data.csrfToken;
+    if (data.analyticsSettings) state.analyticsSettings = data.analyticsSettings;
     applyTheme(data.preferences?.theme || preferredTheme());
+    navigation.load(data.preferences);
     renderAll();
     if (!data.user.onboardingComplete && !elements.onboardingDialog.open) openLifeSetup({ firstRun: true });
   } catch (error) {
@@ -666,54 +667,16 @@ async function loadAnalytics() {
   try {
     const result = await api(`/api/analytics?period=${encodeURIComponent(period)}&date=${encodeURIComponent(state.analyticsDate.toISOString())}`);
     if (requestId !== state.analyticsRequest) return;
-    renderAnalytics(result);
+    renderAnalyticsBoard(result);
   } catch (error) {
     if (requestId !== state.analyticsRequest) return;
-    elements.analyticsMetrics.innerHTML = `<div class="analytics-card"><span>Analytics unavailable</span><strong>—</strong><small>${escapeHtml(error.message)}</small></div>`;
-    elements.subjectDistribution.innerHTML = emptyState('Could not load progress', error.message);
-    elements.analyticsNote.innerHTML = '<p>Your schedule is still safe. Try this view again in a moment.</p>';
+    analyticsBoardError(error.message);
   } finally {
     if (requestId === state.analyticsRequest) {
       elements.analyticsContent.setAttribute('aria-busy', 'false');
       elements.analyticsContent.classList.remove('loading');
     }
   }
-}
-
-function renderAnalytics({ period, range, analytics }) {
-  const timezone = state.data?.user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-  elements.analyticsRangeLabel.textContent = analyticsRangeText(period, range, timezone);
-  elements.analyticsMetrics.innerHTML = [
-    analyticsMetric('Focused time', formatDuration(analytics.focusedMinutes), analytics.focusedMinutes ? 'Completed study sessions' : 'No completed study yet'),
-    analyticsMetric('Completion', `${analytics.completionRate}%`, analytics.plannedCount ? `${analytics.completedCount} of ${analytics.plannedCount} sessions` : 'No sessions in this period'),
-    analyticsMetric('Completed', analytics.completedCount, analytics.completedCount === 1 ? 'Study session' : 'Study sessions'),
-    analyticsMetric('Missed', analytics.missedCount, analytics.missedCount === 1 ? 'Study session' : 'Study sessions'),
-    analyticsMetric('Current streak', analytics.currentStreak, analytics.currentStreak === 1 ? 'Day' : 'Days'),
-    analyticsMetric('Capacity left', formatDuration(analytics.capacityMinutes), 'After scheduled study blocks')
-  ].join('');
-
-  elements.subjectDistribution.innerHTML = '';
-  const subjects = analytics.subjectDistribution || [];
-  if (!subjects.length) {
-    elements.subjectDistribution.innerHTML = emptyState('No completed study yet', 'Complete a study block in this period to see your subject balance.');
-  } else {
-    const maximum = Math.max(...subjects.map((subject) => subject.minutes), 1);
-    subjects.forEach((subject) => {
-      const row = document.createElement('div'); row.className = 'subject-row';
-      const width = Math.max(4, Math.round((subject.minutes / maximum) * 100));
-      row.innerHTML = `<strong>${escapeHtml(subject.subject)}</strong><div class="subject-bar-track" role="img" aria-label="${escapeAttr(subject.subject)} ${escapeAttr(formatDuration(subject.minutes))}"><div class="subject-bar" style="width:${width}%"></div></div><span>${formatDuration(subject.minutes)}</span>`;
-      elements.subjectDistribution.append(row);
-    });
-  }
-
-  const summary = analytics.focusedMinutes
-    ? `You completed <strong>${formatDuration(analytics.focusedMinutes)}</strong> of focused study with a <strong>${analytics.completionRate}% completion rate</strong>. ${analytics.missedCount ? `${analytics.missedCount} missed session${analytics.missedCount === 1 ? '' : 's'} can be replanned with Arcad.` : 'Nothing was marked missed in this period.'}`
-    : `There is no completed study in this period yet. You still have <strong>${formatDuration(analytics.capacityMinutes)}</strong> of unplanned capacity available.`;
-  elements.analyticsNote.innerHTML = `<p>${summary}</p>`;
-}
-
-function analyticsMetric(label, value, detail) {
-  return `<div class="analytics-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(detail)}</small></div>`;
 }
 
 function updateAnalyticsControls() {
@@ -1485,7 +1448,7 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = safeTheme;
   try { localStorage.setItem('arcadia-theme', safeTheme); } catch {}
   updateThemeControls();
-  requestAnimationFrame(drawArcadConstellations);
+  requestAnimationFrame(createArcadSky);
 }
 
 const arcadConstellationSets = {
@@ -1500,29 +1463,54 @@ const arcadConstellationSets = {
   ]
 };
 
+const arcadStarTints = ['', '', '', '', 'color-mix(in srgb, currentColor 82%, #ffd9b0)', 'color-mix(in srgb, currentColor 82%, #bcd4ff)'];
+// Warm/cool tinting only reads right where stars are near-white; on themes with a
+// coloured star (light pastels, vanta) it just muddies the hue, so skip it there.
+const arcadTintableThemes = new Set(['dark', 'midnight', 'dusk']);
+
 function createArcadSky() {
   if (!elements.arcadStars || !elements.arcadConstellations) return;
   const mobile = matchMedia('(max-width: 720px)').matches;
+  const tintable = arcadTintableThemes.has(document.documentElement.dataset.theme);
   const random = seededRandom(mobile ? 0xA7CAD02 : 0xA7CAD01);
-  const count = mobile ? 120 : 210;
-  const kinds = ['dot', 'dot', 'glow', 'four', 'six', 'halo'];
+  const count = mobile ? 280 : 480;
+  // A diagonal "Milky Way" band that a subset of stars cluster toward.
+  const bandSlope = -0.4 + random() * 0.2;
+  const bandCentre = 22 + random() * 26;
   elements.arcadStars.innerHTML = '';
   for (let index = 0; index < count; index += 1) {
     const star = document.createElement('i');
-    const kind = kinds[Math.floor(random() * kinds.length)];
-    const sizeRoll = random();
-    const size = sizeRoll > .94 ? 7 + random() * 3 : sizeRoll > .72 ? 3 + random() * 3 : 1 + random() * 2.2;
+    // Brightness-weighted: mostly faint pinpoints, few bright stars.
+    const tierRoll = random();
+    let tier; let size; let opacity;
+    if (tierRoll > .96) { tier = 'bright'; size = 3 + random() * 2; opacity = .75 + random() * .25; }
+    else if (tierRoll > .78) { tier = 'mid'; size = 1.6 + random() * 1.4; opacity = .45 + random() * .3; }
+    else { tier = 'faint'; size = .6 + random() * 1; opacity = .2 + random() * .25; }
+    // Bright stars occasionally show diffraction spikes or a wider halo.
+    const kind = tier === 'bright' && random() > .74 ? (random() > .5 ? 'six' : 'four') : (tier === 'bright' && random() > .5 ? 'halo' : 'dot');
     const x = 1.5 + random() * 97;
-    const y = Math.pow(random(), 1.65) * 95;
-    star.className = `arcad-star ${kind}`;
-    star.style.cssText = `left:${x.toFixed(2)}%;top:${y.toFixed(2)}%;--star-size:${size.toFixed(2)}px;--star-opacity:${(.25 + random() * .65).toFixed(2)};--star-speed:${(4.8 + random() * 5).toFixed(2)}s;--star-delay:-${(random() * 7).toFixed(2)}s;--star-rotate:${kind === 'six' ? '30deg' : '0deg'}`;
+    // Mild top bias so it's densest near the horizon glow but still fills the field.
+    let y = Math.pow(random(), 1.2) * 99;
+    if (random() < .32) {
+      const centre = bandCentre + bandSlope * (x - 50);
+      y = Math.min(99, Math.max(1, centre + (random() - .5) * 30));
+      opacity = Math.min(1, opacity + .1);
+    }
+    const tintRoll = arcadStarTints[Math.floor(random() * arcadStarTints.length)];
+    const tint = tintable ? tintRoll : '';
+    // Pulse amplitude by tier; brighter stars breathe harder. Faint stars barely move.
+    const [twLo, twHi, twMin] = tier === 'bright' ? [.9, 1.1, .4] : tier === 'mid' ? [.93, 1.06, .52] : [.985, 1.02, .62];
+    const glitterRoll = random();
+    const glitter = tier === 'bright' || (tier === 'mid' && glitterRoll > .55);
+    star.className = `arcad-star ${tier} ${kind}${glitter ? ' glitter' : ''}`;
+    star.style.cssText = `left:${x.toFixed(2)}%;top:${y.toFixed(2)}%;--star-size:${size.toFixed(2)}px;--star-opacity:${opacity.toFixed(2)};--twinkle-min:${(twMin + random() * .12).toFixed(2)};--tw-lo:${twLo};--tw-hi:${twHi};--star-speed:${(5 + random() * 8).toFixed(2)}s;--star-delay:-${(random() * 12).toFixed(2)}s;--glitter-speed:${(3.2 + random() * 4).toFixed(2)}s;--glitter-delay:-${(random() * 9).toFixed(2)}s;--star-rotate:${kind === 'six' ? '30deg' : '0deg'}${tint ? `;--star-tint:${tint}` : ''}`;
     elements.arcadStars.append(star);
   }
   const sets = arcadConstellationSets[mobile ? 'mobile' : 'desktop'];
   sets.flatMap((set) => set.stars).forEach(([x,y], index) => {
     const anchor = document.createElement('i');
-    anchor.className = 'arcad-star constellation';
-    anchor.style.cssText = `left:${x * 100}%;top:${y * 100}%;--star-size:${index % 4 === 0 ? 4.5 : 3}px;--star-opacity:.78;--star-speed:${6 + index % 5}s;--star-delay:-${index % 7}s`;
+    anchor.className = 'arcad-star bright constellation glitter';
+    anchor.style.cssText = `left:${x * 100}%;top:${y * 100}%;--star-size:${index % 4 === 0 ? 4.5 : 3}px;--star-opacity:.82;--twinkle-min:.6;--tw-lo:.92;--tw-hi:1.08;--star-speed:${7 + index % 5}s;--star-delay:-${index % 7}s;--glitter-speed:${4 + index % 4}s;--glitter-delay:-${index % 6}s`;
     elements.arcadStars.append(anchor);
   });
   drawArcadConstellations();
@@ -1539,14 +1527,66 @@ function drawArcadConstellations() {
   const context = canvas.getContext('2d');
   context.setTransform(density, 0, 0, density, 0, 0);
   context.clearRect(0, 0, bounds.width, bounds.height);
-  context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--arcad-line').trim();
-  context.lineWidth = 1;
+  const styles = getComputedStyle(document.documentElement);
+  const lineColor = styles.getPropertyValue('--arcad-line').trim();
+  const glowColor = styles.getPropertyValue('--arcad-glow').trim();
+  context.lineCap = 'round';
   const sets = arcadConstellationSets[matchMedia('(max-width: 720px)').matches ? 'mobile' : 'desktop'];
   sets.forEach((set) => {
-    context.beginPath();
-    set.lines.forEach(([from,to]) => { context.moveTo(set.stars[from][0] * bounds.width,set.stars[from][1] * bounds.height); context.lineTo(set.stars[to][0] * bounds.width,set.stars[to][1] * bounds.height); });
-    context.stroke();
+    set.lines.forEach(([from,to]) => {
+      const ax = set.stars[from][0] * bounds.width, ay = set.stars[from][1] * bounds.height;
+      const bx = set.stars[to][0] * bounds.width, by = set.stars[to][1] * bounds.height;
+      // Wide, faint glow pass.
+      context.strokeStyle = glowColor;
+      context.lineWidth = 3.5;
+      context.globalAlpha = .45;
+      context.beginPath();
+      context.moveTo(ax, ay); context.lineTo(bx, by);
+      context.stroke();
+      // Crisp pass, tapered so the line fades into each end star.
+      const gradient = context.createLinearGradient(ax, ay, bx, by);
+      gradient.addColorStop(0, 'transparent');
+      gradient.addColorStop(.1, lineColor);
+      gradient.addColorStop(.9, lineColor);
+      gradient.addColorStop(1, 'transparent');
+      context.strokeStyle = gradient;
+      context.lineWidth = 1.1;
+      context.globalAlpha = 1;
+      context.beginPath();
+      context.moveTo(ax, ay); context.lineTo(bx, by);
+      context.stroke();
+    });
   });
+  context.globalAlpha = 1;
+}
+
+function scheduleArcadMeteor() {
+  const delay = 45000 + Math.random() * 45000;
+  setTimeout(() => { fireArcadMeteor(); scheduleArcadMeteor(); }, delay);
+}
+
+function fireArcadMeteor() {
+  if (!elements.arcadStars) return;
+  if (state.activeView !== 'arcad' || document.visibilityState !== 'visible') return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const meteor = document.createElement('i');
+  meteor.className = 'arcad-meteor';
+  // Mostly streak down-right; occasionally down-left. Shallow entry angle.
+  const dir = Math.random() > 0.78 ? -1 : 1;
+  const pitch = (10 + Math.random() * 24) * (Math.PI / 180);
+  const travel = 40 + Math.random() * 30; // vw
+  const dx = Math.cos(pitch) * travel * dir;
+  const dy = Math.sin(pitch) * travel;
+  // Trail rotation = actual travel direction in screen space; the streak is
+  // authored pointing backwards, so it trails behind the head automatically.
+  const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+  const startX = dir === 1 ? 2 + Math.random() * 52 : 46 + Math.random() * 52;
+  const startY = 2 + Math.random() * 34;
+  const length = 110 + Math.random() * 150; // px
+  const life = 620 + Math.random() * 520; // ms
+  meteor.style.cssText = `left:${startX.toFixed(2)}%;top:${startY.toFixed(2)}%;--meteor-dx:${dx.toFixed(2)}vw;--meteor-dy:${dy.toFixed(2)}vw;--meteor-angle:${angleDeg.toFixed(2)}deg;--meteor-len:${length.toFixed(0)}px;--meteor-life:${life.toFixed(0)}ms`;
+  meteor.addEventListener('animationend', () => meteor.remove(), { once: true });
+  elements.arcadStars.append(meteor);
 }
 
 function seededRandom(seed) {

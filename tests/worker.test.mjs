@@ -5,8 +5,12 @@ import worker from "../dist/server/index.js";
 import { schemaStatements } from "../db/schema.ts";
 import {
   completeEvent, createEvent, createProposal, deleteEvent, ensureDatabase, getAnalytics, getEvent,
-  getPlannerData, listEvents, listTasks, updateEvent, upsertProfile, weekRange
+  getPlannerData, listEvents, listStudyEntries, listTasks, updateEvent, upsertProfile, weekRange
 } from "../worker/db.js";
+import {
+  bucketDailyStudy, bucketHourlyStudy, intensityThresholds, subjectTotals, summariseStreaks,
+  validateAnalyticsSettings
+} from "../worker/analytics.js";
 import { applyProposal } from "../worker/openai.js";
 
 class D1Statement {
@@ -36,6 +40,58 @@ class TestR2 {
 
 const sessionCache = new WeakMap();
 const testEnv = () => ({ DB: new TestD1(), FILES: new TestR2(), AUTH_TEST_MODE: "true", AUTH_PBKDF2_ITERATIONS: "1" });
+
+test('navigation preferences persist, validate strictly and stay isolated by account', async () => {
+  const env = testEnv();
+  const headers = await authHeaders(env, 'navigation-owner', true);
+  const request = (method, path, body, requestHeaders = headers) => worker.fetch(new Request(`https://arcadia.test${path}`, { method, headers: requestHeaders, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }), env, {});
+  const initial = await (await request('GET', '/api/account')).json();
+  assert.equal(initial.account.navigationLayout, 'sidebar');
+  assert.equal(initial.account.sidebarCollapsed, false);
+  const saved = await request('PATCH', '/api/account', { navigationLayout: 'topbar', sidebarCollapsed: true });
+  assert.equal(saved.status, 200);
+  assert.equal((await saved.json()).account.sidebarCollapsed, true);
+  await request('PATCH', '/api/account', { theme: 'ocean', name: 'Navigation Student' });
+  await request('PATCH', '/api/account', { navigationLayout: 'sidebar' });
+  const current = await (await request('GET', '/api/account')).json();
+  assert.equal(current.account.navigationLayout, 'sidebar');
+  assert.equal(current.account.sidebarCollapsed, true);
+  assert.equal(current.account.theme, 'ocean');
+  assert.equal(current.account.name, 'Navigation Student');
+  for (const body of [{ navigationLayout: 'bottom' }, { navigationLayout: null }, { sidebarCollapsed: 'false' }, { sidebarCollapsed: 1 }, { sidebarCollapsed: null }]) {
+    const invalid = await request('PATCH', '/api/account', { ...body, theme: 'dark' });
+    assert.equal(invalid.status, 400);
+  }
+  const unauthenticated = await request('PATCH', '/api/account', { navigationLayout: 'topbar' }, { 'content-type': 'application/json' });
+  assert.equal(unauthenticated.status, 401);
+  const noCsrf = await request('PATCH', '/api/account', { navigationLayout: 'topbar' }, { cookie: headers.cookie, 'content-type': 'application/json' });
+  assert.equal(noCsrf.status, 403);
+  const other = await (await request('GET', '/api/account', undefined, await authHeaders(env, 'navigation-other'))).json();
+  assert.equal(other.account.navigationLayout, 'sidebar');
+  assert.equal(other.account.sidebarCollapsed, false);
+  const login = await request('POST', '/api/auth/login', { email: 'navigation-owner@example.com', password: 'correct horse battery navigation-owner' }, { 'content-type': 'application/json' });
+  assert.equal(login.status, 200);
+  const dashboard = await (await request('GET', '/api/dashboard', undefined, { cookie: login.headers.get('set-cookie').split(';')[0] })).json();
+  assert.equal(dashboard.preferences.sidebarCollapsed, true);
+  assert.equal(dashboard.preferences.navigationLayout, 'sidebar');
+  assert.equal(dashboard.preferences.theme, 'ocean');
+});
+
+test('navigation migration preserves existing planner preferences and accepts both layouts', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const env = testEnv();
+  for (const sql of schemaStatements) await env.DB.prepare(sql.replace(/    navigation_layout[^\n]+\n/, '').replace(/    sidebar_collapsed[^\n]+\n/, '')).run();
+  await upsertProfile(env, { id: 'navigation-legacy', email: 'legacy@example.com', name: 'Legacy' });
+  await env.DB.prepare("UPDATE user_preferences SET theme = 'dusk', bedtime = '21:45' WHERE user_id = 'navigation-legacy'").run();
+  const migration = await readFile(new URL('../drizzle/0009_navigation_preferences.sql', import.meta.url), 'utf8');
+  for (const statement of migration.split('--> statement-breakpoint').map(sql => sql.trim()).filter(Boolean)) await env.DB.prepare(statement).run();
+  const row = await env.DB.prepare("SELECT * FROM user_preferences WHERE user_id = 'navigation-legacy'").first();
+  assert.equal(row.theme, 'dusk'); assert.equal(row.bedtime, '21:45');
+  assert.equal(row.navigation_layout, 'sidebar'); assert.equal(row.sidebar_collapsed, 0);
+  await env.DB.prepare("UPDATE user_preferences SET navigation_layout = 'topbar', sidebar_collapsed = 1 WHERE user_id = 'navigation-legacy'").run();
+  await assert.rejects(env.DB.prepare("UPDATE user_preferences SET navigation_layout = 'bottom'").run());
+  await assert.rejects(env.DB.prepare('UPDATE user_preferences SET sidebar_collapsed = 2').run());
+});
 async function authHeaders(env, id = "owner", json = false) {
   let users = sessionCache.get(env); if (!users) { users = new Map(); sessionCache.set(env, users); }
   if (!users.has(id)) {
@@ -167,10 +223,10 @@ test("ships the borderless, accessible Arcad sky and composer", async () => {
   assert.match(html, /\.arcad-star\.halo/);
   assert.match(html, /@media \(prefers-reduced-motion: reduce\)[^{]*\{[^}]*animation: none !important/);
   const script = await (await worker.fetch(new Request("https://arcadia.test/dashboard.js"), {}, {})).text();
-  assert.match(script, /const count = mobile \? 120 : 210/);
+  assert.match(script, /const count = mobile \? 280 : 480/);
   assert.match(script, /arcadConstellationSets/);
   for (const constellation of ["ORION", "CRUX", "CASSIOPEIA"]) assert.match(script, new RegExp(constellation));
-  assert.match(script, /Math\.pow\(random\(\), 1\.65\)/);
+  assert.match(script, /Math\.pow\(random\(\), 1\.2\)/);
 });
 
 test("persists private subject knowledge, text excerpts, downloads, and deletion", async () => {
@@ -235,7 +291,8 @@ test("upgrades the legacy theme constraint without losing preferences", async ()
 test("loads the focused Lucide subset without module-only browser imports", async () => {
   const env = testEnv(); const page = await worker.fetch(new Request("https://arcadia.test/", { headers: await authHeaders(env) }), env, {});
   const html = await page.text();
-  assert.match(html, /<script defer src="\.\/lucide-icons\.js"><\/script>\s*<script defer src="\.\/dashboard\.js"><\/script>/);
+  // Navigation and analytics initialise before the dashboard's classic script.
+  assert.match(html, /<script defer src="\.\/lucide-icons\.js"><\/script>\s*<script defer src="\.\/analytics-view\.js"><\/script>\s*<script defer src="\.\/navigation\.js"><\/script>\s*<script defer src="\.\/dashboard\.js"><\/script>/);
   assert.doesNotMatch(html, /type="module"/);
 
   const response = await worker.fetch(new Request("https://arcadia.test/lucide-icons.js"), {}, {});
@@ -374,7 +431,8 @@ test("keeps pinned generated study blocks through replanning without duplicating
   events = await listEvents(env, userId, new Date().toISOString(), new Date(due.getTime() + 86400000).toISOString()); const planned = events.filter((event) => event.category === "study" && event.outcome === "planned"); assert.ok(planned.some((event) => event.id === first.id && event.pinned)); assert.equal(planned.reduce((sum, event) => sum + (Date.parse(event.endAt) - Date.parse(event.startAt)) / 60000, 0), 120); assertNoOverlaps(events);
 });
 
-test("derives persistent completion analytics from real study sessions", async () => {
+test("derives persistent completion analytics from real study sessions", async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-08-25T04:00:00.000Z') });
   const env = { DB: new TestD1() };
   await ensureDatabase(env);
   await upsertProfile(env, { id: "student", email: "student@example.com", name: "Student" });
@@ -623,6 +681,168 @@ test("keeps conversations private to their owner", async () => {
   const { conversation } = await (await worker.fetch(new Request("https://arcadia.test/api/conversations", { method: "POST", headers: ownerHeaders }), env, {})).json();
   const stolen = await worker.fetch(new Request(`https://arcadia.test/api/conversations/${conversation.id}`, { headers: intruderHeaders }), env, {});
   assert.equal(stolen.status, 404);
+});
+
+test("buckets study into one row per day, including days with nothing on them", () => {
+  const entries = [
+    { startAt: "2026-08-25T02:00:00.000Z", endAt: "2026-08-25T03:00:00.000Z", minutes: 60, subject: "Biology", outcome: "completed", source: "event" },
+    { startAt: "2026-08-25T06:30:00.000Z", endAt: "2026-08-25T07:00:00.000Z", minutes: 30, subject: "Physics", outcome: "completed", source: "tracker" },
+    { startAt: "2026-08-25T09:00:00.000Z", endAt: "2026-08-25T10:00:00.000Z", minutes: 60, subject: "Physics", outcome: "missed", source: "event" },
+    { startAt: "2026-08-27T02:00:00.000Z", endAt: "2026-08-27T03:00:00.000Z", minutes: 60, subject: "Maths", outcome: "planned", source: "event" }
+  ];
+  const rows = bucketDailyStudy(entries, "Australia/Sydney", "2026-08-25", 3);
+  assert.deepEqual(rows.map((row) => row.date), ["2026-08-25", "2026-08-26", "2026-08-27"]);
+  assert.equal(rows[0].minutes, 90);
+  assert.equal(rows[0].sessions, 2);
+  assert.equal(rows[0].missedCount, 1);
+  assert.equal(rows[0].topSubject, "Biology");
+  assert.equal(rows[1].minutes, 0);
+  assert.equal(rows[2].minutes, 0);
+  assert.equal(rows[2].plannedMinutes, 60, "planned work counts as intent, not as focused time");
+});
+
+test("buckets study by the viewer's local day, not UTC", () => {
+  // 23:30 Sydney on the 25th is still 13:30 UTC on the 25th, but 09:00 UTC on the 26th is
+  // already the 26th at 19:00 in Sydney. Both must land on their local day.
+  const entries = [
+    { startAt: "2026-08-25T13:30:00.000Z", endAt: "2026-08-25T14:00:00.000Z", minutes: 30, subject: "Biology", outcome: "completed", source: "event" },
+    { startAt: "2026-08-26T09:00:00.000Z", endAt: "2026-08-26T10:00:00.000Z", minutes: 60, subject: "Physics", outcome: "completed", source: "event" }
+  ];
+  const rows = bucketDailyStudy(entries, "Australia/Sydney", "2026-08-25", 3);
+  assert.equal(rows[0].minutes, 30, "23:30 local stays on the 25th");
+  assert.equal(rows[1].minutes, 60, "19:00 local stays on the 26th");
+});
+
+test("counts a study block and a tracker session on the same day without double counting", async () => {
+  const env = testEnv();
+  await ensureDatabase(env);
+  await upsertProfile(env, { id: "both", email: "both@example.com", name: "Both" });
+  const event = await createEvent(env, "both", { title: "Chemistry", kind: "study", subject: "Chemistry", startAt: "2026-08-25T02:00:00.000Z", endAt: "2026-08-25T03:00:00.000Z" });
+  await completeEvent(env, "both", event.id);
+
+  const now = new Date().toISOString();
+  // One free-standing tracker session, and one already tied to the event above.
+  await env.DB.prepare(`INSERT INTO study_sessions (id, user_id, event_id, client_id, subject, mode, goal, duration_seconds, distractions, started_at, ended_at, duration_minutes, created_at)
+    VALUES ('free', 'both', NULL, 'free', 'Chemistry', 'focus', '', 1500, 0, '2026-08-25T06:00:00.000Z', '2026-08-25T06:25:00.000Z', 25, ?)`).bind(now).run();
+  await env.DB.prepare(`INSERT INTO study_sessions (id, user_id, event_id, client_id, subject, mode, goal, duration_seconds, distractions, started_at, ended_at, duration_minutes, created_at)
+    VALUES ('linked', 'both', ?, 'linked', 'Chemistry', 'focus', '', 3600, 0, '2026-08-25T02:00:00.000Z', '2026-08-25T03:00:00.000Z', 60, ?)`).bind(event.id, now).run();
+
+  const entries = await listStudyEntries(env, "both", "2026-08-24T14:00:00.000Z", "2026-08-25T14:00:00.000Z");
+  assert.equal(entries.length, 2, "the session attached to an event is not counted twice");
+  const rows = bucketDailyStudy(entries, "Australia/Sydney", "2026-08-25", 1);
+  assert.equal(rows[0].minutes, 85, "60m scheduled block plus a 25m free-standing tracker session");
+  assert.equal(rows[0].sessions, 2);
+});
+
+test("separates the current streak from the longest one", () => {
+  const rows = [
+    { date: "2026-08-10", minutes: 30 }, { date: "2026-08-11", minutes: 45 },
+    { date: "2026-08-12", minutes: 60 }, { date: "2026-08-13", minutes: 20 },
+    { date: "2026-08-14", minutes: 0 }, { date: "2026-08-15", minutes: 0 },
+    { date: "2026-08-16", minutes: 25 }, { date: "2026-08-17", minutes: 40 }
+  ];
+  const fromToday = summariseStreaks(rows, "2026-08-17");
+  assert.equal(fromToday.current, 2);
+  assert.equal(fromToday.longest, 4);
+  assert.equal(fromToday.activeDays, 6);
+
+  // A run that ended yesterday still counts as current -- today is not over yet.
+  assert.equal(summariseStreaks(rows, "2026-08-18").current, 2);
+  // A run that ended earlier does not.
+  assert.equal(summariseStreaks(rows, "2026-08-19").current, 0);
+});
+
+test("scales heatmap intensity to the person, not a fixed ladder", () => {
+  const light = intensityThresholds([5, 10, 15, 20, 25]);
+  const heavy = intensityThresholds([200, 300, 400, 500, 600]);
+  assert.ok(light[3] < heavy[0], "a light studier gets a far lower top band");
+  for (const bands of [light, heavy]) {
+    for (let index = 1; index < bands.length; index += 1) {
+      assert.ok(bands[index] > bands[index - 1], "bands stay strictly increasing so levels remain distinct");
+    }
+  }
+  assert.deepEqual(intensityThresholds([]), [1, 2, 3, 4], "an empty history still yields usable bands");
+});
+
+test("summarises hourly rhythm and subject totals from completed study only", () => {
+  const entries = [
+    { startAt: "2026-08-25T06:00:00.000Z", endAt: "2026-08-25T07:00:00.000Z", minutes: 60, subject: "Biology", outcome: "completed", source: "event" },
+    { startAt: "2026-09-01T06:00:00.000Z", endAt: "2026-09-01T07:00:00.000Z", minutes: 30, subject: "Biology", outcome: "completed", source: "event" },
+    { startAt: "2026-08-26T06:00:00.000Z", endAt: "2026-08-26T07:00:00.000Z", minutes: 90, subject: "Physics", outcome: "missed", source: "event" }
+  ];
+  const hourly = bucketHourlyStudy(entries, "Australia/Sydney");
+  assert.equal(hourly.length, 1, "both completed sessions land in the same Tuesday 16:00 cell");
+  assert.deepEqual({ weekday: hourly[0].weekday, hour: hourly[0].hour, minutes: hourly[0].minutes, sessions: hourly[0].sessions },
+    { weekday: 1, hour: 16, minutes: 90, sessions: 2 });
+  assert.deepEqual(subjectTotals(entries), [{ subject: "Biology", minutes: 90, sessions: 2 }]);
+});
+
+test("clamps and whitelists analytics widget settings", () => {
+  const settings = validateAnalyticsSettings({
+    heatmap: { window: 9999, metric: "bogus", includeTracker: "yes", weekStart: "sunday" },
+    subjects: { limit: 500 },
+    injected: { evil: true }
+  });
+  assert.equal(settings.heatmap.window, 371, "an unknown window falls back to the default");
+  assert.equal(settings.heatmap.metric, "minutes", "an unknown enum falls back to the default");
+  assert.equal(settings.heatmap.includeTracker, true, "a non-boolean falls back rather than coercing");
+  assert.equal(settings.heatmap.weekStart, "sunday", "a valid choice is kept");
+  assert.equal(settings.subjects.limit, 20, "out-of-range numbers clamp");
+  assert.equal(settings.injected, undefined, "unknown widgets are dropped");
+});
+
+test("serves, clamps and persists the analytics heatmap and its settings", async () => {
+  const env = testEnv();
+  await ensureDatabase(env);
+  await upsertProfile(env, { id: "grid", email: "grid@example.com", name: "Grid" });
+  const headers = await authHeaders(env, "grid");
+  const jsonHeaders = await authHeaders(env, "grid", true);
+
+  const oversized = await worker.fetch(new Request("https://arcadia.test/api/analytics/heatmap?days=9999", { headers }), env, {});
+  assert.equal(oversized.status, 200);
+  const heatmap = await oversized.json();
+  assert.equal(heatmap.days.length, 371, "the window is capped at roughly a year");
+  assert.equal(heatmap.thresholds.minutes.length, 4);
+
+  const badEnd = await worker.fetch(new Request("https://arcadia.test/api/analytics/heatmap?end=not-a-date", { headers }), env, {});
+  assert.equal(badEnd.status, 400);
+
+  const defaults = await (await worker.fetch(new Request("https://arcadia.test/api/analytics/settings", { headers }), env, {})).json();
+  assert.equal(defaults.settings.heatmap.window, 371, "a user who never saved gets the defaults");
+
+  const saved = await worker.fetch(new Request("https://arcadia.test/api/analytics/settings", {
+    method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ heatmap: { window: 92 }, trend: { metric: "sessions" } })
+  }), env, {});
+  assert.equal(saved.status, 200);
+  assert.equal((await saved.json()).settings.heatmap.window, 92);
+
+  const reloaded = await (await worker.fetch(new Request("https://arcadia.test/api/analytics/settings", { headers }), env, {})).json();
+  assert.equal(reloaded.settings.heatmap.window, 92, "the choice survives a reload");
+  assert.equal(reloaded.settings.trend.metric, "sessions");
+  assert.equal(reloaded.settings.heatmap.metric, "minutes", "untouched fields keep their defaults");
+});
+
+test("returns daily, hourly and comparison series alongside the unchanged analytics totals", async () => {
+  const env = testEnv();
+  await ensureDatabase(env);
+  await upsertProfile(env, { id: "series", email: "series@example.com", name: "Series" });
+  const event = await createEvent(env, "series", { title: "Revision", kind: "study", subject: "Biology", startAt: "2026-08-25T02:00:00.000Z", endAt: "2026-08-25T03:00:00.000Z" });
+  await completeEvent(env, "series", event.id);
+
+  const headers = await authHeaders(env, "series");
+  const response = await worker.fetch(new Request("https://arcadia.test/api/analytics?period=week&date=2026-08-25T02:00:00.000Z", { headers }), env, {});
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+
+  assert.equal(payload.analytics.focusedMinutes, 60, "the original totals are untouched");
+  assert.equal(payload.daily.length, 7);
+  assert.equal(payload.previousDaily.length, 7);
+  assert.equal(payload.daily.reduce((sum, row) => sum + row.minutes, 0), 60);
+  assert.equal(payload.current.activeDays, 1);
+  assert.equal(payload.previous.minutes, 0);
+  assert.equal(payload.streaks.longest, 1);
+  assert.deepEqual(payload.subjects, [{ subject: "Biology", minutes: 60, sessions: 1 }]);
+  assert.ok(payload.settings.heatmap, "settings ride along so the board renders without a second call");
 });
 
 function futureWeekday(weekday, minimumDays) {

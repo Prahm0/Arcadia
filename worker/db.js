@@ -97,13 +97,63 @@ export async function getPreferences(env, userId) {
   const row = await env.DB.prepare(`
     SELECT bedtime, wake_time AS wakeTime, minimum_sleep_minutes AS minimumSleepMinutes,
       max_daily_study_minutes AS maxDailyStudyMinutes, preferred_session_minutes AS preferredSessionMinutes,
-      break_minutes AS breakMinutes, theme, updated_at AS updatedAt
+      break_minutes AS breakMinutes, theme, navigation_layout AS navigationLayout,
+      sidebar_collapsed AS sidebarCollapsed, updated_at AS updatedAt
     FROM user_preferences WHERE user_id = ?
   `).bind(userId).first();
-  return row || {
+  return row ? { ...row, sidebarCollapsed: Boolean(row.sidebarCollapsed) } : {
     bedtime: "22:30", wakeTime: "06:30", minimumSleepMinutes: 480,
-    maxDailyStudyMinutes: 180, preferredSessionMinutes: 60, breakMinutes: 15, theme: "light"
+    maxDailyStudyMinutes: 180, preferredSessionMinutes: 60, breakMinutes: 15, theme: "light",
+    navigationLayout: "sidebar", sidebarCollapsed: false
   };
+}
+
+/**
+ * Every piece of study in a window, from both sources, in one normalised shape.
+ *
+ * Scheduled study blocks carry their real outcome (completed / missed / planned). Study
+ * Tracker sessions are always completed time. Sessions already attached to an event are
+ * excluded so a tracked block is never counted twice -- the same `event_id IS NULL` filter
+ * `listStudySessions` uses.
+ */
+export async function listStudyEntries(env, userId, start, end, limit = 4000) {
+  const capped = Math.min(8000, Math.max(1, Number(limit) || 4000));
+  const result = await env.DB.prepare(`
+    SELECT start_at AS startAt, end_at AS endAt, subject, outcome, 'event' AS source, NULL AS storedMinutes
+    FROM events
+    WHERE user_id = ? AND event_category = 'study' AND status != 'cancelled'
+      AND start_at < ? AND start_at >= ?
+    UNION ALL
+    SELECT started_at AS startAt, ended_at AS endAt, subject, 'completed' AS outcome, 'tracker' AS source,
+      duration_minutes AS storedMinutes
+    FROM study_sessions
+    WHERE user_id = ? AND event_id IS NULL AND mode != 'rest'
+      AND started_at < ? AND started_at >= ?
+    ORDER BY startAt ASC
+    LIMIT ?
+  `).bind(userId, end, start, userId, end, start, capped).all();
+  return (result.results || []).map((row) => ({
+    startAt: row.startAt, endAt: row.endAt,
+    minutes: row.storedMinutes === null || row.storedMinutes === undefined
+      ? minutesBetween(row.startAt, row.endAt)
+      : Math.max(0, Number(row.storedMinutes) || 0),
+    subject: row.subject || "General", outcome: row.outcome, source: row.source
+  }));
+}
+
+export async function getAnalyticsSettingsRow(env, userId) {
+  const row = await env.DB.prepare("SELECT settings_json AS settingsJson FROM analytics_settings WHERE user_id = ?")
+    .bind(userId).first();
+  return row?.settingsJson || "{}";
+}
+
+export async function saveAnalyticsSettings(env, userId, settings) {
+  const now = new Date().toISOString();
+  await env.DB.prepare(`INSERT INTO analytics_settings (user_id, settings_json, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = excluded.updated_at`)
+    .bind(userId, JSON.stringify(settings), now).run();
+  return settings;
 }
 
 export async function listStudySessions(env, userId, limit = 50) {
