@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="mark" x1="12" y1="8" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7c5cff" />
+      <stop offset="1" stop-color="#6246ea" />
+    </linearGradient>
+    <clipPath id="favicon-corners"><rect width="64" height="64" rx="18" /></clipPath>
+  </defs>
+  <g clip-path="url(#favicon-corners)">
+    <rect width="64" height="64" fill="#10111a" />
+    <path fill="url(#mark)" d="M4.5 54.5H15L32 21l17 33.5h10.5L40.5 9.5H27zM32 40.7l6.75 13.8h-13.5z" />
+  </g>
+</svg>

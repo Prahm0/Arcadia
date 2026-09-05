@@ -8,6 +8,7 @@ import authScript from "../auth.js?raw";
 import lucideIconsScript from "../lucide-icons.js?raw";
 import arcadiaMarkTransparent from "../arcadia-mark-transparent.png?inline";
 import favicon from "../favicon.png?inline";
+import faviconSvg from "../favicon.svg?inline";
 import appleTouchIcon from "../apple-touch-icon.png?inline";
 import socialPreview from "../og-v3.png?inline";
 import {
@@ -46,6 +47,7 @@ const MAX_SUBJECT_FILE_BYTES = 10 * 1024 * 1024;
 const imageAssets = new Map([
   ["/arcadia-logo.png", arcadiaMarkTransparent], ["/arcadia-mark.png", arcadiaMarkTransparent],
   ["/arcadia-mark-transparent.png", arcadiaMarkTransparent], ["/favicon.png", favicon],
+  ["/favicon.svg", faviconSvg],
   ["/apple-touch-icon.png", appleTouchIcon], ["/og.png", socialPreview],
   ["/og-v2.png", socialPreview], ["/og-v3.png", socialPreview]
 ]);
@@ -60,7 +62,7 @@ export default {
     if (url.pathname === "/navigation.css") return new Response(navigationStyles, { headers: { "content-type": "text/css; charset=utf-8", "cache-control": "private, no-store" } });
     if (url.pathname === "/lucide-icons.js") return new Response(lucideIconsScript, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "private, no-store" } });
     const imageAsset = imageAssets.get(url.pathname);
-    if (imageAsset) return new Response(decodeDataUrl(imageAsset), { headers: { "cache-control": "public, max-age=31536000, immutable", "content-type": "image/png" } });
+    if (imageAsset) return new Response(decodeDataUrl(imageAsset), { headers: { "cache-control": "public, max-age=31536000, immutable", "content-type": url.pathname.endsWith(".svg") ? "image/svg+xml" : "image/png" } });
     try {
       await ensureDatabase(env);
       if (url.pathname.startsWith("/api/auth/")) {

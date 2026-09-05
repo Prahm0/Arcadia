@@ -20,11 +20,11 @@
   .rail-button:hover .rail-icon { transform: translateY(-2px); }
 }
 .rail-button:focus-visible .rail-icon { transform: translateY(-2px); }
-.nav-indicator { position: absolute; top: 0; left: 0; z-index: -1; pointer-events: none; border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent); border-radius: 12px; background: var(--accent-soft); transition: transform 200ms ease, width 200ms ease, height 200ms ease; }
+.nav-indicator { position: absolute; top: 0; left: 0; z-index: -1; pointer-events: none; border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent); border-radius: 12px; background-color: var(--accent-soft); background-image: var(--gloss); transition: transform 200ms ease, width 200ms ease, height 200ms ease; }
 .avatar-wrap { align-self: stretch; padding-top: 20px; }
 .avatar { width: 44px; height: 44px; font-size: .875rem; transition: box-shadow 180ms ease, border-color 180ms ease; }
 .avatar:hover { box-shadow: 0 0 0 4px var(--accent-soft); }
-.account-menu { left: calc(100% + 20px); bottom: 0; width: min(260px, calc(100vw - 28px)); max-height: calc(100dvh - 100px); overflow-y: auto; box-shadow: 0 12px 32px #00000018; }
+.account-menu { left: calc(100% + 20px); bottom: 0; width: min(260px, calc(100vw - 28px)); max-height: calc(100dvh - 100px); overflow-y: auto; background-image: var(--gloss); box-shadow: 0 12px 32px #00000018; }
 .account-menu-head strong { font-size: .875rem; }
 .account-menu-head span { font-size: .8125rem; }
 .account-menu-action { min-height: 44px; font-size: .875rem; }
@@ -37,7 +37,7 @@
 .navigation-choice:disabled { opacity: .6; }
 .navigation-note { font-size: .8125rem !important; line-height: 1.5 !important; }
 .navigation-status { min-height: 1.5em; }
-.navigation-tooltip { position: fixed; z-index: 35; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--panel); box-shadow: 0 6px 20px #00000018; font-size: .875rem; pointer-events: none; }
+.navigation-tooltip { position: fixed; z-index: 35; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background-color: var(--panel); background-image: var(--gloss); box-shadow: 0 6px 20px #00000018; font-size: .875rem; pointer-events: none; }
 .workspace.arcad-active { min-height: calc(100dvh - var(--nav-height)); padding-bottom: clamp(22px, 3vw, 44px); }
 .workspace.arcad-active > .topbar { display: none; }
 .arcad-view { height: calc(100dvh - var(--nav-height) - 2 * clamp(22px, 3vw, 44px)); min-height: 320px; }
@@ -74,7 +74,7 @@
   .mobile-nav-glyph { width: 18px; height: 12px; border-top: 2px solid currentColor; border-bottom: 2px solid currentColor; position: relative; transition: transform 180ms ease; }
   .mobile-nav-glyph::before { content: ''; position: absolute; left: 0; right: 0; top: 3px; border-top: 2px solid currentColor; }
   .mobile-nav-toggle[aria-expanded="true"] .mobile-nav-glyph { transform: rotate(90deg); }
-  .app-shell .rail-nav { display: none; position: absolute; top: calc(100% + 6px); left: 10px; right: 10px; width: auto; max-height: calc(100dvh - var(--nav-height) - 16px); overflow-y: auto; margin: 0; padding: 8px; border: 1px solid var(--divider); border-radius: 16px; background: var(--panel); box-shadow: 0 12px 32px #00000020; }
+  .app-shell .rail-nav { display: none; position: absolute; top: calc(100% + 6px); left: 10px; right: 10px; width: auto; max-height: calc(100dvh - var(--nav-height) - 16px); overflow-y: auto; margin: 0; padding: 8px; border: 1px solid var(--divider); border-radius: 16px; background-color: var(--panel); background-image: var(--gloss); box-shadow: 0 12px 32px #00000020; }
   .app-shell.mobile-nav-open .rail-nav { display: flex; animation: navigation-reveal 180ms ease both; }
   .app-shell .rail-button { width: 100%; justify-content: flex-start; padding: 12px; }
   .app-shell .rail-label { display: block; }
