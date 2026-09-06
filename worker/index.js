@@ -12,7 +12,7 @@ import faviconSvg from "../favicon.svg?inline";
 import appleTouchIcon from "../apple-touch-icon.png?inline";
 import socialPreview from "../og-v3.png?inline";
 import {
-  completeEvent, createConversation, createEvent, createSubjectFileMetadata, createTask, deleteEvent, deleteSubjectFileMetadata,
+  completeEvent, createCommitment, createConversation, createEvent, createSubjectFileMetadata, createTask, deleteCommitment, deleteEvent, deleteSubjectFileMetadata, deleteTask, listCommitments, updateCommitmentFields, updateTaskFields,
   ensureDatabase, getAnalytics, getCompanion, getConversation, getEvent, getOrCreateActiveConversation, getPlannerData,
   getAnalyticsSettingsRow, getSubjectFile, listActivity, listConversationMessages, listConversations, listEvents,
   listMessages, listPendingProposals, listStudyEntries, listStudySessions, listSubjectContexts, markEventOutcome,
@@ -167,6 +167,52 @@ async function routeApi(request, env, context, url, authenticatedUser, csrfToken
     const schedule = await rebuildSchedule(env, authenticatedUser.id, { from: new Date(), horizonDays: 21 });
     publishSchedule(context, env, authenticatedUser.id, schedule.created);
     return json({ task, schedule: scheduleSummary(schedule) }, 201);
+  }
+
+  const taskMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
+  if (taskMatch && method === "PATCH") {
+    const id = decodeURIComponent(taskMatch[1]);
+    const input = validateTaskUpdate(await readJson(request));
+    const task = await updateTaskFields(env, authenticatedUser.id, id, input);
+    if (!task) return json({ error: "Task not found." }, 404);
+    const schedule = await rebuildSchedule(env, authenticatedUser.id, { from: new Date(), horizonDays: 21 });
+    publishSchedule(context, env, authenticatedUser.id, schedule.created);
+    return json({ task, schedule: scheduleSummary(schedule) });
+  }
+  if (taskMatch && method === "DELETE") {
+    const id = decodeURIComponent(taskMatch[1]);
+    const removed = await deleteTask(env, authenticatedUser.id, id);
+    if (!removed) return json({ error: "Task not found." }, 404);
+    return json({ ok: true, task: removed });
+  }
+
+  if (method === "GET" && path === "/api/commitments") {
+    return json({ commitments: await listCommitments(env, authenticatedUser.id) });
+  }
+  if (method === "POST" && path === "/api/commitments") {
+    const input = validateCommitment(await readJson(request));
+    const commitment = await createCommitment(env, authenticatedUser.id, input);
+    const schedule = await rebuildSchedule(env, authenticatedUser.id, { from: new Date(), horizonDays: 21 });
+    publishSchedule(context, env, authenticatedUser.id, schedule.created);
+    return json({ commitment, schedule: scheduleSummary(schedule) }, 201);
+  }
+  const commitmentMatch = path.match(/^\/api\/commitments\/([^/]+)$/);
+  if (commitmentMatch && method === "PATCH") {
+    const id = decodeURIComponent(commitmentMatch[1]);
+    const input = validateCommitment(await readJson(request));
+    const updated = await updateCommitmentFields(env, authenticatedUser.id, id, input);
+    if (!updated) return json({ error: "Commitment not found." }, 404);
+    const schedule = await rebuildSchedule(env, authenticatedUser.id, { from: new Date(), horizonDays: 21 });
+    publishSchedule(context, env, authenticatedUser.id, schedule.created);
+    return json({ commitment: updated, schedule: scheduleSummary(schedule) });
+  }
+  if (commitmentMatch && method === "DELETE") {
+    const id = decodeURIComponent(commitmentMatch[1]);
+    const removed = await deleteCommitment(env, authenticatedUser.id, id);
+    if (!removed) return json({ error: "Commitment not found." }, 404);
+    const schedule = await rebuildSchedule(env, authenticatedUser.id, { from: new Date(), horizonDays: 21 });
+    publishSchedule(context, env, authenticatedUser.id, schedule.created);
+    return json({ ok: true, schedule: scheduleSummary(schedule) });
   }
 
   if (method === "POST" && path === "/api/schedule/generate") {
@@ -478,6 +524,40 @@ function validateTask(body, { subjects } = {}) {
   if (Number.isNaN(due.valueOf())) throw badRequest(`${title} needs a valid due date.`);
   if (!Number.isInteger(estimatedMinutes) || estimatedMinutes < 15 || estimatedMinutes > 24 * 60) throw badRequest(`${title} needs an estimate between 15 minutes and 24 hours.`);
   return { title, subject: subject || null, taskType, dueAt: due.toISOString(), estimatedMinutes, priority: priority(body.priority), notes: text(body.notes, 1000) };
+}
+
+function validateTaskUpdate(body) {
+  const out = {};
+  if (body.title !== undefined) {
+    const title = text(body.title, 120);
+    if (!title) throw badRequest("Every task needs a title.");
+    out.title = title;
+  }
+  if (body.subject !== undefined) {
+    out.subject = text(body.subject, 80) || null;
+  }
+  if (body.taskType !== undefined) {
+    const taskType = text(body.taskType, 30);
+    if (!["homework", "assignment", "exam", "revision", "project", "other"].includes(taskType)) {
+      throw badRequest("Choose a valid task type.");
+    }
+    out.taskType = taskType;
+  }
+  if (body.dueAt !== undefined) {
+    const due = new Date(body.dueAt);
+    if (Number.isNaN(due.valueOf())) throw badRequest("Choose a valid due date.");
+    out.dueAt = due.toISOString();
+  }
+  if (body.estimatedMinutes !== undefined) {
+    const estimated = Math.round(Number(body.estimatedMinutes));
+    if (!Number.isInteger(estimated) || estimated < 15 || estimated > 24 * 60) {
+      throw badRequest("Estimate must be between 15 minutes and 24 hours.");
+    }
+    out.estimatedMinutes = estimated;
+  }
+  if (body.priority !== undefined) out.priority = priority(body.priority);
+  if (body.notes !== undefined) out.notes = text(body.notes, 1000);
+  return out;
 }
 
 function validateCommitment(body) {

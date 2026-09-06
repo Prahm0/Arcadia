@@ -285,6 +285,46 @@ export async function updateCommitmentTime(env, userId, id, startTime, endTime) 
   return Number(result.meta?.changes || 0) > 0;
 }
 
+export async function updateCommitmentFields(env, userId, id, input) {
+  const existing = await env.DB.prepare(`
+    SELECT id, title, category, start_date AS startDate, weekday, start_time AS startTime,
+      end_time AS endTime, recurrence, notes, active
+    FROM commitments WHERE id = ? AND user_id = ?
+  `).bind(id, userId).first();
+  if (!existing) return null;
+  const now = new Date().toISOString();
+  const next = {
+    title: input.title ?? existing.title,
+    category: input.category ?? existing.category,
+    startDate: input.startDate === undefined ? existing.startDate : input.startDate,
+    weekday: input.weekday === undefined ? existing.weekday : input.weekday,
+    startTime: input.startTime ?? existing.startTime,
+    endTime: input.endTime ?? existing.endTime,
+    recurrence: input.recurrence ?? existing.recurrence,
+    notes: input.notes ?? existing.notes,
+  };
+  await env.DB.prepare(`
+    UPDATE commitments SET title = ?, category = ?, start_date = ?, weekday = ?, start_time = ?,
+      end_time = ?, recurrence = ?, notes = ?, updated_at = ?
+    WHERE id = ? AND user_id = ?
+  `).bind(
+    next.title, next.category, next.startDate, next.weekday,
+    next.startTime, next.endTime, next.recurrence, next.notes, now,
+    id, userId,
+  ).run();
+  return { id, ...next, active: Boolean(existing.active) };
+}
+
+export async function deleteCommitment(env, userId, id) {
+  const existing = await env.DB.prepare("SELECT id FROM commitments WHERE id = ? AND user_id = ?").bind(id, userId).first();
+  if (!existing) return null;
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM events WHERE user_id = ? AND commitment_id = ?").bind(userId, id),
+    env.DB.prepare("DELETE FROM commitments WHERE id = ? AND user_id = ?").bind(id, userId),
+  ]);
+  return existing;
+}
+
 export async function listActivity(env, userId, { start = "1970-01-01T00:00:00.000Z", end = "9999-12-31T23:59:59.999Z", limit = 100 } = {}) {
   const result = await env.DB.prepare(`
     SELECT a.id, a.event_id AS eventId, a.task_id AS taskId, a.outcome, a.duration_minutes AS durationMinutes,
@@ -389,6 +429,47 @@ export async function addTaskTime(env, userId, taskId, minutes) {
       status = 'pending', completed_at = NULL, updated_at = ? WHERE id = ? AND user_id = ? AND status != 'archived'
   `).bind(safeMinutes, safeMinutes, new Date().toISOString(), taskId, userId).run();
   return Number(result.meta?.changes || 0) ? getTask(env, userId, taskId) : null;
+}
+
+export async function updateTaskFields(env, userId, taskId, input) {
+  const existing = await getTask(env, userId, taskId);
+  if (!existing) return null;
+  const subject = input.subject && input.subject !== existing.subject
+    ? await getOrCreateSubject(env, userId, input.subject, { priority: input.priority || existing.priority })
+    : null;
+  const subjectId = subject?.id ?? existing.subjectId ?? null;
+  const now = new Date().toISOString();
+  const nextEstimated = Math.max(15, Math.round(Number(input.estimatedMinutes ?? existing.estimatedMinutes)));
+  const scheduledMinutes = Math.max(0, existing.estimatedMinutes - existing.remainingMinutes);
+  const nextRemaining = Math.max(0, nextEstimated - scheduledMinutes);
+  await env.DB.prepare(`
+    UPDATE tasks SET title = ?, task_type = ?, subject_id = ?, due_at = ?, estimated_minutes = ?,
+      remaining_minutes = ?, priority = ?, notes = ?, updated_at = ?
+    WHERE id = ? AND user_id = ? AND status != 'archived'
+  `).bind(
+    input.title ?? existing.title,
+    input.taskType ?? existing.taskType,
+    subjectId,
+    input.dueAt ?? existing.dueAt,
+    nextEstimated,
+    nextRemaining,
+    input.priority ?? existing.priority,
+    input.notes ?? existing.notes,
+    now,
+    taskId,
+    userId,
+  ).run();
+  return getTask(env, userId, taskId);
+}
+
+export async function deleteTask(env, userId, taskId) {
+  const existing = await getTask(env, userId, taskId);
+  if (!existing) return null;
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM events WHERE user_id = ? AND task_id = ? AND outcome = 'planned'").bind(userId, taskId),
+    env.DB.prepare("DELETE FROM tasks WHERE id = ? AND user_id = ?").bind(taskId, userId),
+  ]);
+  return existing;
 }
 
 export async function getPlannerData(env, userId) {
