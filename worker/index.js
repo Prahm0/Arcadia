@@ -17,7 +17,9 @@ import {
   getAnalyticsSettingsRow, getSubjectFile, listActivity, listConversationMessages, listConversations, listEvents,
   listMessages, listPendingProposals, listStudyEntries, listStudySessions, listSubjectContexts, markEventOutcome,
   saveAnalyticsSettings, saveOnboarding, saveStudySessions, saveSubjectContext,
-  clearStudySessions, updateCompanion, updateEvent, weekRange
+  clearStudySessions, updateCompanion, updateEvent, weekRange,
+  createStudyRoom, getStudyRoomByCode, listStudyRoomsForUser, joinStudyRoom, updateStudyRoomHeartbeat,
+  leaveStudyRoom, listStudyRoomMembers, studyRoomMembership
 } from "./db.js";
 import {
   bucketDailyStudy, bucketHourlyStudy, dateKeyInZone as analyticsDateKey, intensityThresholds,
@@ -213,6 +215,51 @@ async function routeApi(request, env, context, url, authenticatedUser, csrfToken
     const schedule = await rebuildSchedule(env, authenticatedUser.id, { from: new Date(), horizonDays: 21 });
     publishSchedule(context, env, authenticatedUser.id, schedule.created);
     return json({ ok: true, schedule: scheduleSummary(schedule) });
+  }
+
+  // --- Study rooms (group study, presence + timer state) ---
+  if (method === "GET" && path === "/api/study-rooms") {
+    const rooms = await listStudyRoomsForUser(env, authenticatedUser.id);
+    return json({ rooms });
+  }
+  if (method === "POST" && path === "/api/study-rooms") {
+    const body = await readJson(request);
+    const room = await createStudyRoom(env, authenticatedUser.id, body?.name, body?.displayName || authenticatedUser.email?.split("@")[0]);
+    return json({ room }, 201);
+  }
+  const roomCodeMatch = path.match(/^\/api\/study-rooms\/([^/]+)$/);
+  if (roomCodeMatch && method === "GET") {
+    const room = await getStudyRoomByCode(env, decodeURIComponent(roomCodeMatch[1]));
+    if (!room) return json({ error: "Room not found." }, 404);
+    const members = await listStudyRoomMembers(env, room.id);
+    return json({ room, members });
+  }
+  const roomJoinMatch = path.match(/^\/api\/study-rooms\/([^/]+)\/join$/);
+  if (roomJoinMatch && method === "POST") {
+    const room = await getStudyRoomByCode(env, decodeURIComponent(roomJoinMatch[1]));
+    if (!room) return json({ error: "Room not found." }, 404);
+    const body = await readJson(request);
+    await joinStudyRoom(env, room.id, authenticatedUser.id, body?.displayName || authenticatedUser.email?.split("@")[0]);
+    const members = await listStudyRoomMembers(env, room.id);
+    return json({ room, members });
+  }
+  const roomHeartbeatMatch = path.match(/^\/api\/study-rooms\/([^/]+)\/heartbeat$/);
+  if (roomHeartbeatMatch && method === "POST") {
+    const room = await getStudyRoomByCode(env, decodeURIComponent(roomHeartbeatMatch[1]));
+    if (!room) return json({ error: "Room not found." }, 404);
+    const membership = await studyRoomMembership(env, room.id, authenticatedUser.id);
+    if (!membership) return json({ error: "Join the room first." }, 403);
+    const body = await readJson(request);
+    await updateStudyRoomHeartbeat(env, room.id, authenticatedUser.id, body?.state || {});
+    const members = await listStudyRoomMembers(env, room.id);
+    return json({ room, members });
+  }
+  const roomLeaveMatch = path.match(/^\/api\/study-rooms\/([^/]+)\/leave$/);
+  if (roomLeaveMatch && method === "POST") {
+    const room = await getStudyRoomByCode(env, decodeURIComponent(roomLeaveMatch[1]));
+    if (!room) return json({ error: "Room not found." }, 404);
+    await leaveStudyRoom(env, room.id, authenticatedUser.id);
+    return json({ ok: true });
   }
 
   if (method === "POST" && path === "/api/schedule/generate") {
