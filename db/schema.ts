@@ -282,6 +282,28 @@ export const schemaStatements = [
   `CREATE INDEX IF NOT EXISTS idx_conversations_user_activity ON chat_conversations(user_id, last_message_at)`,
   `CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON chat_messages(conversation_id, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_proposals_user_status ON proposals(user_id, status, created_at)`
+  ,`CREATE TABLE IF NOT EXISTS study_rooms (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    owner_user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    archived_at TEXT
+  )`
+  ,`CREATE TABLE IF NOT EXISTS study_room_members (
+    room_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    joined_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    state_activity TEXT NOT NULL DEFAULT 'idle' CHECK (state_activity IN ('idle', 'focus', 'break')),
+    state_subject TEXT,
+    state_started_at TEXT,
+    state_duration_seconds INTEGER,
+    PRIMARY KEY (room_id, user_id),
+    FOREIGN KEY (room_id) REFERENCES study_rooms(id) ON DELETE CASCADE
+  )`
+  ,`CREATE INDEX IF NOT EXISTS idx_study_room_members_user ON study_room_members(user_id, last_seen_at)`
   ,`CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_email_normalized ON accounts(email_normalized)`
   ,`CREATE INDEX IF NOT EXISTS idx_auth_tokens_lookup ON auth_tokens(kind, email_normalized, expires_at)`
   ,`CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id, expires_at)`

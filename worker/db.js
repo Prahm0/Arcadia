@@ -882,6 +882,137 @@ function categoryForKind(kind) {
 function minutesBetween(start, end) {
   return Math.max(0, Math.round((Date.parse(end) - Date.parse(start)) / 60000));
 }
+// --- Study rooms ---
+
+const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I/O/0/1
+function generateRoomCode() {
+  let code = "";
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  for (const byte of bytes) code += ROOM_CODE_ALPHABET[byte % ROOM_CODE_ALPHABET.length];
+  return code;
+}
+
+export async function createStudyRoom(env, userId, name, displayName) {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const safeName = String(name || "").trim().slice(0, 60) || "Study room";
+  // Try a few times to avoid the very unlikely code collision.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const code = generateRoomCode();
+    try {
+      await env.DB.prepare(`
+        INSERT INTO study_rooms (id, code, name, owner_user_id, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).bind(id, code, safeName, userId, now).run();
+      await env.DB.prepare(`
+        INSERT OR REPLACE INTO study_room_members
+          (room_id, user_id, display_name, joined_at, last_seen_at, state_activity, state_subject, state_started_at, state_duration_seconds)
+        VALUES (?, ?, ?, ?, ?, 'idle', NULL, NULL, NULL)
+      `).bind(id, userId, safeDisplayName(displayName), now, now).run();
+      return { id, code, name: safeName, ownerUserId: userId, createdAt: now };
+    } catch (err) {
+      if (attempt === 3) throw err;
+      // Retry on unique-code collision only.
+      if (!/UNIQUE|constraint/i.test(String(err?.message || ""))) throw err;
+    }
+  }
+  throw new Error("Could not allocate a room code.");
+}
+
+export async function getStudyRoomByCode(env, code) {
+  const upper = String(code || "").trim().toUpperCase().slice(0, 12);
+  if (!upper) return null;
+  const row = await env.DB.prepare(`
+    SELECT id, code, name, owner_user_id AS ownerUserId, created_at AS createdAt, archived_at AS archivedAt
+    FROM study_rooms WHERE code = ? LIMIT 1
+  `).bind(upper).first();
+  if (!row || row.archivedAt) return null;
+  return row;
+}
+
+export async function getStudyRoomById(env, id) {
+  const row = await env.DB.prepare(`
+    SELECT id, code, name, owner_user_id AS ownerUserId, created_at AS createdAt, archived_at AS archivedAt
+    FROM study_rooms WHERE id = ? LIMIT 1
+  `).bind(id).first();
+  if (!row || row.archivedAt) return null;
+  return row;
+}
+
+export async function listStudyRoomsForUser(env, userId) {
+  const result = await env.DB.prepare(`
+    SELECT r.id, r.code, r.name, r.owner_user_id AS ownerUserId, r.created_at AS createdAt,
+           m.joined_at AS joinedAt, m.last_seen_at AS lastSeenAt
+    FROM study_rooms r
+    JOIN study_room_members m ON m.room_id = r.id
+    WHERE m.user_id = ? AND r.archived_at IS NULL
+    ORDER BY m.last_seen_at DESC
+  `).bind(userId).all();
+  return result.results || [];
+}
+
+export async function joinStudyRoom(env, roomId, userId, displayName) {
+  const now = new Date().toISOString();
+  await env.DB.prepare(`
+    INSERT INTO study_room_members
+      (room_id, user_id, display_name, joined_at, last_seen_at, state_activity)
+    VALUES (?, ?, ?, ?, ?, 'idle')
+    ON CONFLICT (room_id, user_id) DO UPDATE SET
+      display_name = excluded.display_name,
+      last_seen_at = excluded.last_seen_at
+  `).bind(roomId, userId, safeDisplayName(displayName), now, now).run();
+}
+
+export async function updateStudyRoomHeartbeat(env, roomId, userId, state) {
+  const now = new Date().toISOString();
+  const activity = ["idle", "focus", "break"].includes(state?.activity) ? state.activity : "idle";
+  const subject = state?.subject ? String(state.subject).trim().slice(0, 80) : null;
+  const startedAt = state?.startedAt ? new Date(state.startedAt).toISOString() : null;
+  const durationSeconds =
+    Number.isFinite(Number(state?.durationSeconds))
+      ? Math.max(0, Math.min(24 * 60 * 60, Math.round(Number(state.durationSeconds))))
+      : null;
+  const result = await env.DB.prepare(`
+    UPDATE study_room_members
+    SET last_seen_at = ?, state_activity = ?, state_subject = ?, state_started_at = ?, state_duration_seconds = ?
+    WHERE room_id = ? AND user_id = ?
+  `).bind(now, activity, subject, startedAt, durationSeconds, roomId, userId).run();
+  return Number(result?.meta?.changes || 0) > 0;
+}
+
+export async function leaveStudyRoom(env, roomId, userId) {
+  await env.DB.prepare(`DELETE FROM study_room_members WHERE room_id = ? AND user_id = ?`).bind(roomId, userId).run();
+  // Archive the room if the owner leaves and it's empty. Cheap, keeps the
+  // room list clean.
+  const remaining = await env.DB.prepare(`SELECT COUNT(1) AS n FROM study_room_members WHERE room_id = ?`).bind(roomId).first();
+  if (Number(remaining?.n || 0) === 0) {
+    await env.DB.prepare(`UPDATE study_rooms SET archived_at = ? WHERE id = ?`).bind(new Date().toISOString(), roomId).run();
+  }
+}
+
+export async function listStudyRoomMembers(env, roomId) {
+  const result = await env.DB.prepare(`
+    SELECT user_id AS userId, display_name AS displayName, joined_at AS joinedAt, last_seen_at AS lastSeenAt,
+           state_activity AS activity, state_subject AS subject,
+           state_started_at AS startedAt, state_duration_seconds AS durationSeconds
+    FROM study_room_members WHERE room_id = ?
+    ORDER BY joined_at ASC
+  `).bind(roomId).all();
+  return result.results || [];
+}
+
+export async function studyRoomMembership(env, roomId, userId) {
+  return env.DB.prepare(`
+    SELECT room_id AS roomId, user_id AS userId, last_seen_at AS lastSeenAt
+    FROM study_room_members WHERE room_id = ? AND user_id = ? LIMIT 1
+  `).bind(roomId, userId).first();
+}
+
+function safeDisplayName(value) {
+  return String(value || "Student").trim().slice(0, 60) || "Student";
+}
+
 function completionStreak(activity) {
   const days = new Set(activity.filter((item) => item.outcome === "completed").map((item) => item.occurredAt.slice(0, 10)));
   if (!days.size) return 0;
